@@ -217,10 +217,26 @@ impl CPU {
     fn fetch(&self, ram: &RAM) -> u16 {
         ram.get(self.program_counter)
     }
-
+    fn xoo(&self,code:u16)->u8 {
+        ((code >> 12) & 0xF)as u8
+    }
     fn decode(&self, opcode: u16) -> Instruction {//this does not work yet, to be implemented
-        println!("{:#02x}",opcode); 
-        Instruction::CLEAR_SCREEN
+        println!("{:#x}",opcode); 
+        
+        //println!("translated: {:#02x}",self.xoo(opcode));
+        match self.xoo(opcode) {
+            0x0 => {
+                println!("opcode starting with 0");
+            },
+            0xA => {
+                Instruction::SET_INDEX_REGISTER(5),//ANNN set index register I to nnn, replace that 5 with value of last three bytes
+            }
+            _ => {
+                panic!("can't decode opcode yet");
+            }
+
+        }
+       // Instruction::CLEAR_SCREEN
     }
 
     fn execute(&mut self,instruction:Instruction) {
@@ -303,6 +319,7 @@ fn main() {
     let mut c = CPU::new(b);
     
     while true {
+        c.cycle();
         c.cycle();
         c.cycle();
         break;
