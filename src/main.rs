@@ -18,7 +18,7 @@ struct RomBuffer {
 impl RomBuffer {
     fn new(file:&str)->Self {
         let mut data:Vec<u16> = vec![];
-        let buffer = std::fs::read(file).unwrap();
+        let buffer:Vec<u8> = std::fs::read(file).unwrap();
         for (y,x) in buffer.chunks(2).enumerate() {
             let number = ((x[0] as u16) << 8) | x[1] as u16;// this might be wrong, maybe I don't want to convert endianness here
             data.push(number);  
@@ -71,11 +71,125 @@ impl Registers {
             vindex: 0,
         }
     }
+    fn set_index_register(&mut self, value:u16) {
+            self.vindex = value;
+    }
+    fn get_index_register(&self)-> u16 {
+            self.vindex
+    }
+     fn get_register(&mut self,register:u8)->u8 {
+        match register {
+            0 => {
+                self.v0
+            },
+            1 => {
+                self.v1
+            },
+            2 => {
+                self.v2
+            },
+            3 => {
+                self.v3
+            },
+            4 => {
+                self.v4
+            },
+            5 => {
+                self.v5
+            },
+            6 => {
+                self.v6
+            }
+            7 => {
+                self.v7
+            },
+            8 => {
+                self.v8
+            },
+            9 => {
+                self.v9
+            },
+            10=>{
+                self.va
+            },
+            11=>{
+                self.vb
+            },
+            12=>{
+                self.vc
+            },
+            13=>{
+                self.vd
+            },
+            14=>{
+                self.ve
+            },
+            15=>{
+                self.vf
+            },
+            _ => { panic!("Invalid register");},
+        }
+     }
+    fn set_register(&mut self,register:u8, value:u8){
+        match register {
+            0 => {
+                self.v0 = value;
+            },
+            1 => {
+                self.v1 = value;
+            },
+            2 => {
+                self.v2 = value;
+            },
+            3 => {
+                self.v3 = value;
+            },
+            4 => {
+                self.v4 = value;
+            },
+            5 => {
+                self.v5 = value;
+            }, 
+            6 => {
+                self.v6 = value;
+            }, 
+            7 => {
+                self.v7 = value;
+            }, 
+            8 => {
+                self.v8 = value;
+            }, 
+            9 => {
+                self.v9 = value;
+            },
+            10=>{
+                self.va = value;
+            },
+            11=>{
+                self.vb = value;
+            }, 
+            12=>{
+                self.vc = value;
+            }, 
+            13=>{
+                self.vd = value;
+            }, 
+            14=>{
+                self.ve = value;
+            },
+            15=>{
+                self.vf = value;
+            },
+            _ => { panic!("Invalid register");},
+        }
+    }
 }
 
 impl RAM {
     fn new() -> Self {
-        RAM { bytes: [0; 4096] }
+        let mut bytes = [0;4096];
+        bytes[0x201]= 0xE0;//placeholder for clearscreen instruction. this should be filled with rom data
+        RAM { bytes: bytes }
     }
     fn get(self,index:u16)->u16 {
             return ((self.bytes[index as usize] as u16) << 8) | self.bytes[(index+1)as usize] as u16;
@@ -101,13 +215,11 @@ struct CPU {
 
 impl CPU {
     fn fetch(&self, ram: &RAM) -> u16 {
-        //ram[self.program_counter]
         ram.get(self.program_counter)
     }
 
     fn decode(&self, opcode: u16) -> Instruction {//this does not work yet, to be implemented
-        //println!("")
-
+        println!("{:#02x}",opcode); 
         Instruction::CLEAR_SCREEN
     }
 
@@ -117,33 +229,58 @@ impl CPU {
                 self.program_counter = x;
                 println!("jumping to location {}",x);
             },
+            Instruction::ADD_TO_REGISTER(x,y) => {
+                let tmp = self.registers.get_register(x) + y;
+                self.registers.set_register(x,tmp);
+                println!("adding {} to register {}",y,x);
+            },
             Instruction::CLEAR_SCREEN => {
                 self.display.iter_mut().for_each(|x| *x = false);
                 println!("clearing the screen");
             },
             Instruction::LOAD_REGISTER_VX(x,y) => {
-                
+               self.registers.set_register(x,y); 
+            },
+            Instruction::SET_INDEX_REGISTER(x) => {
+               self.registers.set_index_register(x); 
+            },
+            Instruction::DISPLAY(vx,vy,n) => {
+
+                println!("displaying things");
             }
             _ => {
-                println!("unimplemented instruction");
+                panic!("unimplemented instruction");
             },
         }
     }
 
     fn cycle(&mut self) {
-        let opcode = self.fetch(&self.memory);
-        
-        self.program_counter.wrapping_add(2);//incremented program counter by 2
+        let opcode = self.fetch(&self.memory); 
+        self.program_counter = match self.program_counter + 2 < 4096 {
+            true => { 
+                self.program_counter + 2
+            },
+            false => {
+                0
+            },
+        };
         let instruction = self.decode(opcode);
         self.execute(instruction);
     }
 
-    fn new() -> Self {
+    fn new(rom:RomBuffer) -> Self {
+        let mut memory = RAM::new();
+        for (x,y) in rom.buffer.iter().enumerate() {
+            //println!("{:#04x}",y);
+            memory.bytes[0x200+x] = *y;
+            //add all these bytes into memory, starting at 200
+        }
+
         CPU {
             display:[false;2048],
             program_counter: 0x200,
             registers: Registers::new(),
-            memory: RAM::new(),
+            memory: memory,
             stack: Stack::new(),
             stackpointer: 0,
         }
@@ -162,9 +299,12 @@ enum Instruction{
 }
 
 fn main() {
-    //let b = RomBuffer::new("/home/vancha/Documenten/rust/chip8_emulator/ibmlogo.ch8");
-    let mut c = CPU::new();
+    let b = RomBuffer::new("/home/vancha/Documenten/rust/chip8_emulator/ibmlogo.ch8");
+    let mut c = CPU::new(b);
+    
     while true {
         c.cycle();
+        c.cycle();
+        break;
     }
 }
