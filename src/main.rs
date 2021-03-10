@@ -20,6 +20,9 @@ impl RAM {
         return ((self.bytes[index as usize] as u16) << 8)
             | self.bytes[(index + 1) as usize] as u16;
     }
+    fn read_bytes(&self,start:usize,end:usize)->&[u8] {
+        &self.bytes[start..end]
+    }
 }
 
 struct RomBuffer {
@@ -179,7 +182,6 @@ impl Stack {
         Stack { values: [0; 16] }
     }
 }
-
 struct CPU {
     display: [bool; 2048],
     program_counter: u16, //starts at 0x200, the start of the non-reserved memory
@@ -191,6 +193,13 @@ struct CPU {
 }
 
 impl CPU {
+    fn display(&self){
+        for x in 0..64 {
+            for y in 0..64 {
+
+            }
+        }
+    }
     fn fetch(&self, ram: &RAM) -> u16 {
         ram.get(self.program_counter)
     }
@@ -260,7 +269,13 @@ impl CPU {
                 self.registers.set_index_register(x);
             }
             Instruction::DISPLAY(vx, vy, n) => {
-                println!("displaying things");
+                let value1 = self.registers.get_register(vx);
+                let value2 = self.registers.get_register(vy);
+                let start = self.registers.get_index_register() as usize;
+                let end = start + (n as usize);
+                let values = self.memory.read_bytes(start,end);
+                
+                println!("displaying. got {} from register{}, {} from register {}, and setting {} to {}",value1,vx, value2, vy,n,n);
             }
             _ => {
                 panic!("unimplemented instruction");
@@ -315,10 +330,5 @@ fn main() {
 
     while true {
         c.cycle();
-        //c.cycle();
-        //c.cycle();
-        //c.cycle();
-        //c.cycle();
-        //break;
     }
 }
