@@ -232,7 +232,6 @@ impl CPU {
                         println!("sending clear screen instruction");
                         Instruction::CLEAR_SCREEN
                     }
-                    //0xEE => Some(Instruction::Return),
                     _ => panic!("what's going on {:#06x}",opcode),
                 }
             }
@@ -274,8 +273,10 @@ impl CPU {
                 let start = self.registers.get_index_register() as usize;
                 let end = start + (n as usize);
                 let values = self.memory.read_bytes(start,end);
-                
-                println!("displaying. got {} from register{}, {} from register {}, and setting {} to {}",value1,vx, value2, vy,n,n);
+                for x in values {
+                    println!("byte read: {:#04x}",x);
+                }
+                //println!("displaying. got {} from register{}, {} from register {}, and setting {} to {}",value1,vx, value2, vy,n,n);
             }
             _ => {
                 panic!("unimplemented instruction");
