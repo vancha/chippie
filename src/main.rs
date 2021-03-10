@@ -194,20 +194,33 @@ impl CPU {
     fn fetch(&self, ram: &RAM) -> u16 {
         ram.get(self.program_counter)
     }
-    fn xoo(&self, code: u16) -> u8 {
+    fn xooo(&self, code: u16) -> u8 {
         ((code >> 12) & 0xF) as u8
     }
+    /*fn xxxx(&self, code: u16) -> u8 {
+        ((code >> 12) & 0xF) as u8
+    }*/
+
     fn decode(&self, opcode: u16) -> Instruction {
-        //this does not work yet, to be implemented
         println!("{:#x}", opcode);
 
-        //println!("translated: {:#02x}",self.xoo(opcode));
-        match self.xoo(opcode) {
+        match self.xooo(opcode) {
             0x0 => {
                 println!("opcode starting with 0");
+                match opcode {
+                    0x00E0 => {
+                        Instruction::CLEAR_SCREEN
+                    }
+                    _ => {
+                        panic!("unknown instruction");
+                    }
+                }
+            }
+            0x6 => {
+                Instruction::LOAD_REGISTER_VX(0,4)
             }
             0xA => {
-                Instruction::SET_INDEX_REGISTER(5); //ANNN set index register I to nnn, replace that 5 with value of last three bytes
+                Instruction::SET_INDEX_REGISTER(5) //ANNN set index register I to nnn, replace that 5 with value of last three bytes
             }
             _ => {
                 panic!("can't decode opcode yet");
@@ -232,9 +245,11 @@ impl CPU {
                 println!("clearing the screen");
             }
             Instruction::LOAD_REGISTER_VX(x, y) => {
+                println!("setting value {} to register {}",y,x);
                 self.registers.set_register(x, y);
             }
             Instruction::SET_INDEX_REGISTER(x) => {
+                println!("Setting index register to {}",x);
                 self.registers.set_index_register(x);
             }
             Instruction::DISPLAY(vx, vy, n) => {
@@ -291,6 +306,8 @@ fn main() {
     let mut c = CPU::new(b);
 
     while true {
+        c.cycle();
+        c.cycle();
         c.cycle();
         c.cycle();
         c.cycle();
