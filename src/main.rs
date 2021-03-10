@@ -198,19 +198,19 @@ impl CPU {
         ((code >> 12) & 0xF) as u8
     }
     fn oxoo(&self,code: u16) -> u8 {
-        0
+       ((code >> 8 ) & 0xf) as u8
     }
     fn ooxo(&self,code:u16)->u8 {
-        0
+       ((code >> 4) & 0xf) as u8 
     }
     fn ooox(&self,code:u16)->u8 {
-        0
+       (code as u8) & 0xf 
     }
     fn ooxx(&self, code: u16) -> u8 {
-       (code << 0) as u8 
+       (code & 0xff) as u8 
     }
     fn oxxx(&self, code: u16) -> u16 {
-        0
+       code & 0xfff 
     }
 
     fn decode(&self, opcode: u16) -> Instruction {
@@ -269,6 +269,7 @@ impl CPU {
     }
 
     fn cycle(&mut self) {
+        std::thread::sleep(std::time::Duration::from_millis(1000));
         let opcode = self.fetch(&self.memory);
         self.program_counter = match self.program_counter + 2 < 4096 {
             true => self.program_counter + 2,
@@ -314,10 +315,10 @@ fn main() {
 
     while true {
         c.cycle();
-        c.cycle();
-        c.cycle();
-        c.cycle();
-        c.cycle();
-        break;
+        //c.cycle();
+        //c.cycle();
+        //c.cycle();
+        //c.cycle();
+        //break;
     }
 }
