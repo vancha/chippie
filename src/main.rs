@@ -12,9 +12,9 @@ impl RAM {
     fn read_rom(location: &str) {}
 
     fn new() -> Self {
-        let mut bytes = [0; 4096];
-        bytes[0x201] = 0xE0; //placeholder for clearscreen instruction. this should be filled with rom data
-        Self { bytes: bytes }
+        //let mut bytes = [0; 4096];
+        //bytes[0x201] = 0xE0; //placeholder for clearscreen instruction. this should be filled with rom data
+        Self { bytes: [0;4096] }
     }
     fn get(self, index: u16) -> u16 {
         return ((self.bytes[index as usize] as u16) << 8)
@@ -197,36 +197,43 @@ impl CPU {
     fn xooo(&self, code: u16) -> u8 {
         ((code >> 12) & 0xF) as u8
     }
-    /*fn xxxx(&self, code: u16) -> u8 {
-        ((code >> 12) & 0xF) as u8
-    }*/
+    fn oxoo(&self,code: u16) -> u8 {
+        0
+    }
+    fn ooxo(&self,code:u16)->u8 {
+        0
+    }
+    fn ooox(&self,code:u16)->u8 {
+        0
+    }
+    fn ooxx(&self, code: u16) -> u8 {
+       (code << 0) as u8 
+    }
+    fn oxxx(&self, code: u16) -> u16 {
+        0
+    }
 
     fn decode(&self, opcode: u16) -> Instruction {
-        println!("{:#x}", opcode);
+        println!("{:#06x}", opcode);
 
         match self.xooo(opcode) {
             0x0 => {
-                println!("opcode starting with 0");
-                match opcode {
-                    0x00E0 => {
+                match self.ooxx(opcode) {
+                    0xE0 => {
+                        println!("sending clear screen instruction");
                         Instruction::CLEAR_SCREEN
                     }
-                    _ => {
-                        panic!("unknown instruction");
-                    }
+                    //0xEE => Some(Instruction::Return),
+                    _ => panic!("what's going on {:#06x}",opcode),
                 }
             }
-            0x6 => {
-                Instruction::LOAD_REGISTER_VX(0,4)
-            }
-            0xA => {
-                Instruction::SET_INDEX_REGISTER(5) //ANNN set index register I to nnn, replace that 5 with value of last three bytes
-            }
-            _ => {
-                panic!("can't decode opcode yet");
-            }
-        }
-        // Instruction::CLEAR_SCREEN
+            0x1 => Instruction::JUMP(self.oxxx(opcode)),
+            0x6 => Instruction::LOAD_REGISTER_VX(self.oxoo(opcode), self.ooxx(opcode)),
+            0x7 => Instruction::ADD_TO_REGISTER(self.oxoo(opcode), self.ooxx(opcode)),
+            0xA => Instruction::SET_INDEX_REGISTER(self.oxxx(opcode)),
+            0xD => Instruction::DISPLAY(self.oxoo(opcode),self.ooxo(opcode),self.ooox(opcode)),
+            _ => {panic!("cannot decode. ") } 
+    }
     }
 
     fn execute(&mut self, instruction: Instruction) {
