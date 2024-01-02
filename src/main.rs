@@ -1,5 +1,3 @@
-//use byteorder::{BigEndian, ByteOrder, LittleEndian};
-
 const DISPLAY_WIDTH: usize = 64;
 const DISPLAY_HEIGHT: usize = 32;
 const RAM_SIZE: usize = 4096;
@@ -14,37 +12,33 @@ struct RAM {
     bytes: [u8; RAM_SIZE],
 }
 impl RAM {
-    fn read_rom(location: &str) {}
-
     fn new() -> Self {
-        Self { bytes: [0; RAM_SIZE] }
+        Self {
+            bytes: [0; RAM_SIZE],
+        }
     }
     fn get(self, index: u16) -> u16 {
         //println!("value at {} is {}",index, self.bytes[index as usize]);
-        return((self.bytes[index as usize] as u16) << 8)
+        return ((self.bytes[index as usize] as u16) << 8)
             | self.bytes[(index + 1) as usize] as u16;
     }
-    fn read_bytes(&self, start: usize, end: usize) -> &[u8] {
+    /*fn read_bytes(&self, start: usize, end: usize) -> &[u8] {
         &self.bytes[start..end]
-    }
+    }*/
 }
 
 struct RomBuffer {
-    data: Vec<u16>,
     buffer: Vec<u8>,
 }
 impl RomBuffer {
     fn new(file: &str) -> Self {
         let mut data: Vec<u16> = vec![];
         let buffer: Vec<u8> = std::fs::read(file).unwrap();
-        for (y, x) in buffer.chunks(2).enumerate() {
+        for (_, x) in buffer.chunks(2).enumerate() {
             let number = ((x[0] as u16) << 8) | x[1] as u16; // this might be wrong, maybe I don't want to convert endianness here
             data.push(number);
         }
-        RomBuffer {
-            data: data,
-            buffer: buffer,
-        }
+        RomBuffer { buffer: buffer }
     }
 }
 struct Registers {
@@ -190,7 +184,6 @@ struct CPU {
     registers: Registers,
     stack: Stack, //stack for keeping track of where to return to after subroutine, can go into 16 nested subroutines before stackoverflow
     stackpointer: u8, //only contains indexes to locations in the stack, so 0 through 15
-                  //framebuffer:[bool;64*32],//*x,y) addressable memory array which indicates if pixels are on or off
 }
 
 impl CPU {
@@ -218,8 +211,8 @@ impl CPU {
     fn display(&self) {
         for row in 0..DISPLAY_HEIGHT {
             for col in 0..DISPLAY_WIDTH {
-                let idx = row as usize *DISPLAY_WIDTH  + col as usize;
-                print!("{}", if self.display[idx] {"██"} else { "  "})
+                let idx = row as usize * DISPLAY_WIDTH + col as usize;
+                print!("{}", if self.display[idx] { "██" } else { "  " })
             }
             println!("");
         }
@@ -227,13 +220,13 @@ impl CPU {
     fn decode(&self, opcode: u16) -> Instruction {
         match self.xooo(opcode) {
             0x0 => match self.ooxx(opcode) {
-                0xE0 => Instruction::CLEAR_SCREEN,
+                0xE0 => Instruction::ClearScreen,
                 _ => panic!("what's going on {:#06x}", opcode),
             },
             0x1 => Instruction::JUMP(self.oxxx(opcode)),
-            0x6 => Instruction::LOAD_REGISTER_VX(self.oxoo(opcode), self.ooxx(opcode)),
-            0x7 => Instruction::ADD_TO_REGISTER(self.oxoo(opcode), self.ooxx(opcode)),
-            0xA => Instruction::SET_INDEX_REGISTER(self.oxxx(opcode)),
+            0x6 => Instruction::LoadRegisterVx(self.oxoo(opcode), self.ooxx(opcode)),
+            0x7 => Instruction::AddToRegister(self.oxoo(opcode), self.ooxx(opcode)),
+            0xA => Instruction::SetIndexRegister(self.oxxx(opcode)),
             0xD => Instruction::DISPLAY(self.oxoo(opcode), self.ooxo(opcode), self.ooox(opcode)),
             _ => {
                 panic!("cannot decode,opcode not implemented. ")
@@ -246,17 +239,17 @@ impl CPU {
             Instruction::JUMP(x) => {
                 self.program_counter = x;
             }
-            Instruction::ADD_TO_REGISTER(x, y) => {
+            Instruction::AddToRegister(x, y) => {
                 let tmp = self.registers.get_register(x) + y;
                 self.registers.set_register(x, tmp);
             }
-            Instruction::CLEAR_SCREEN => {
+            Instruction::ClearScreen => {
                 self.display.iter_mut().for_each(|x| *x = false);
             }
-            Instruction::LOAD_REGISTER_VX(x, y) => {
+            Instruction::LoadRegisterVx(x, y) => {
                 self.registers.set_register(x, y);
             }
-            Instruction::SET_INDEX_REGISTER(x) => {
+            Instruction::SetIndexRegister(x) => {
                 self.registers.set_index_register(x);
             }
             //DXYN: draw sprite
@@ -268,27 +261,24 @@ impl CPU {
             Instruction::DISPLAY(vx, vy, n) => {
                 let x_coordinate = self.registers.get_register(vx) % DISPLAY_WIDTH as u8;
                 let y_coordinate = self.registers.get_register(vy) % DISPLAY_HEIGHT as u8;
-                let sprite_location = self.registers.get_index_register();
-                let sprite = self.memory.get(sprite_location);
                 let sprite_start = self.registers.get_index_register() as usize;
-                let sprite_end = sprite_start + (n as usize);
-                
-                //clear 0xf register
-                self.registers.set_register(0xF,0);
 
-                //height is 0 through n
-                for byte in 0..n {
-                    let y = y_coordinate + byte;
-                    for bit in 0..8 {
-                        let x = self.registers.get_register(vx) + bit;
-                        let color = self.memory.bytes[sprite_start + byte as usize] >> (7 - bit) & 1;
-                        let idx = x as usize + DISPLAY_WIDTH *y as usize;
-                        self.display[idx] = if color == 1 { true } else { false};
+                //clear 0xf register
+                self.registers.set_register(0xF, 0);
+
+                //height of sprite is 0 through n
+                //this may fail when drawing out of bounds? maybe add a check for that
+                for sprite_row in 0..n {
+                    let sprite = self.memory.bytes[sprite_start + sprite_row as usize];
+                    //width is always 8
+                    for sprite_column in 0..8 {
+                        let x = x_coordinate + sprite_column;
+                        let y = y_coordinate + sprite_row;
+                        let display_index = x as usize + DISPLAY_WIDTH * y as usize;
+                        let value = sprite >> (7 - sprite_column) & 1 == 1;
+                        self.display[display_index] = value;
                     }
                 }
-            }
-            _ => {
-                panic!("unimplemented instruction");
             }
         }
     }
@@ -327,11 +317,11 @@ impl CPU {
 ///nnn is a hexadecimal memory address,nn is a hexadecimal byte, n refers to a nibble, and X and Y
 ///are registeres
 enum Instruction {
-    JUMP(u16),    //1nnn where nnn is a 12 bit value (lowest 12 bits of the instruction)
-    CLEAR_SCREEN, //00E0
-    LOAD_REGISTER_VX(u8, u8), //6xkk puts the value kk into Vx
-    ADD_TO_REGISTER(u8, u8), //7xnn add value kk to vx, then store result in vx
-    SET_INDEX_REGISTER(u16), //ANNN set index register I to nnn
+    JUMP(u16),   //1nnn where nnn is a 12 bit value (lowest 12 bits of the instruction)
+    ClearScreen, //00E
+    AddToRegister(u8, u8),
+    LoadRegisterVx(u8, u8), //6xkk puts the value kk into Vx
+    SetIndexRegister(u16),  //ANNN set index register I to nnn
     DISPLAY(u8, u8, u8), //DXYN draws a sprite at coordinate from vx and vy, of width 8 and height n
 }
 
@@ -339,7 +329,7 @@ fn main() {
     let b = RomBuffer::new("./ibmlogo.ch8");
     let mut c = CPU::new(b);
 
-    while true {
+    loop {
         c.cycle();
     }
 }
