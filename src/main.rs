@@ -1,4 +1,8 @@
 use byteorder::{BigEndian, ByteOrder, LittleEndian};
+
+const DISPLAY_WIDTH: usize = 64;
+const DISPLAY_HEIGHT: usize = 32;
+
 ///0x000 start of chip-8 ram
 ///0x000 to 0x080 reserved for fontset
 ///0x200 start of most chip-8 programs
@@ -12,15 +16,13 @@ impl RAM {
     fn read_rom(location: &str) {}
 
     fn new() -> Self {
-        //let mut bytes = [0; 4096];
-        //bytes[0x201] = 0xE0; //placeholder for clearscreen instruction. this should be filled with rom data
-        Self { bytes: [0;4096] }
+        Self { bytes: [0; 4096] }
     }
     fn get(self, index: u16) -> u16 {
         return ((self.bytes[index as usize] as u16) << 8)
             | self.bytes[(index + 1) as usize] as u16;
     }
-    fn read_bytes(&self,start:usize,end:usize)->&[u8] {
+    fn read_bytes(&self, start: usize, end: usize) -> &[u8] {
         &self.bytes[start..end]
     }
 }
@@ -36,9 +38,6 @@ impl RomBuffer {
         for (y, x) in buffer.chunks(2).enumerate() {
             let number = ((x[0] as u16) << 8) | x[1] as u16; // this might be wrong, maybe I don't want to convert endianness here
             data.push(number);
-        }
-        for uux in &data {
-            println!("{:#06x}", uux);
         }
         RomBuffer {
             data: data,
@@ -149,22 +148,22 @@ impl Registers {
             9 => {
                 self.v9 = value;
             }
-            10 => {
+            0xA => {
                 self.va = value;
             }
-            11 => {
+            0xB => {
                 self.vb = value;
             }
-            12 => {
+            0xC => {
                 self.vc = value;
             }
-            13 => {
+            0xD => {
                 self.vd = value;
             }
-            14 => {
+            0xE => {
                 self.ve = value;
             }
-            15 => {
+            0xF => {
                 self.vf = value;
             }
             _ => {
@@ -183,7 +182,7 @@ impl Stack {
     }
 }
 struct CPU {
-    display: [bool; 2048],
+    display: [bool; DISPLAY_WIDTH * DISPLAY_HEIGHT],
     program_counter: u16, //starts at 0x200, the start of the non-reserved memory
     memory: RAM,
     registers: Registers,
@@ -193,97 +192,95 @@ struct CPU {
 }
 
 impl CPU {
-    fn display(&self){
-        for x in 0..64 {
-            for y in 0..64 {
-
-            }
-        }
-    }
     fn fetch(&self, ram: &RAM) -> u16 {
         ram.get(self.program_counter)
     }
     fn xooo(&self, code: u16) -> u8 {
         ((code >> 12) & 0xF) as u8
     }
-    fn oxoo(&self,code: u16) -> u8 {
-       ((code >> 8 ) & 0xf) as u8
+    fn oxoo(&self, code: u16) -> u8 {
+        ((code >> 8) & 0xf) as u8
     }
-    fn ooxo(&self,code:u16)->u8 {
-       ((code >> 4) & 0xf) as u8 
+    fn ooxo(&self, code: u16) -> u8 {
+        ((code >> 4) & 0xf) as u8
     }
-    fn ooox(&self,code:u16)->u8 {
-       (code as u8) & 0xf 
+    fn ooox(&self, code: u16) -> u8 {
+        (code as u8) & 0xf
     }
     fn ooxx(&self, code: u16) -> u8 {
-       (code & 0xff) as u8 
+        (code & 0xff) as u8
     }
     fn oxxx(&self, code: u16) -> u16 {
-       code & 0xfff 
+        code & 0xfff
     }
 
     fn decode(&self, opcode: u16) -> Instruction {
-        println!("{:#06x}", opcode);
-
         match self.xooo(opcode) {
-            0x0 => {
-                match self.ooxx(opcode) {
-                    0xE0 => {
-                        println!("sending clear screen instruction");
-                        Instruction::CLEAR_SCREEN
-                    }
-                    _ => panic!("what's going on {:#06x}",opcode),
-                }
-            }
+            0x0 => match self.ooxx(opcode) {
+                0xE0 => Instruction::CLEAR_SCREEN,
+                _ => panic!("what's going on {:#06x}", opcode),
+            },
             0x1 => Instruction::JUMP(self.oxxx(opcode)),
             0x6 => Instruction::LOAD_REGISTER_VX(self.oxoo(opcode), self.ooxx(opcode)),
             0x7 => Instruction::ADD_TO_REGISTER(self.oxoo(opcode), self.ooxx(opcode)),
             0xA => Instruction::SET_INDEX_REGISTER(self.oxxx(opcode)),
-            0xD => Instruction::DISPLAY(self.oxoo(opcode),self.ooxo(opcode),self.ooox(opcode)),
-            _ => {panic!("cannot decode. ") } 
-    }
+            0xD => Instruction::DISPLAY(self.oxoo(opcode), self.ooxo(opcode), self.ooox(opcode)),
+            _ => {
+                panic!("cannot decode,opcode not implemented. ")
+            }
+        }
     }
 
     fn execute(&mut self, instruction: Instruction) {
         match instruction {
             Instruction::JUMP(x) => {
                 self.program_counter = x;
-                println!("jumping to location {}", x);
             }
             Instruction::ADD_TO_REGISTER(x, y) => {
                 let tmp = self.registers.get_register(x) + y;
                 self.registers.set_register(x, tmp);
-                println!("adding {} to register {}", y, x);
             }
             Instruction::CLEAR_SCREEN => {
                 self.display.iter_mut().for_each(|x| *x = false);
-                println!("clearing the screen");
             }
             Instruction::LOAD_REGISTER_VX(x, y) => {
-                println!("setting value {} to register {}",y,x);
                 self.registers.set_register(x, y);
             }
             Instruction::SET_INDEX_REGISTER(x) => {
-                println!("Setting index register to {}",x);
                 self.registers.set_index_register(x);
             }
+            ///DXYN: draw sprite
+            ///The sprite to draw here is n-bytes tall, and 8 bytes wide
+            ///The position in memory where the sprite data starts is stored in register VI
+            ///the sprite will be drawn at location (X,Y) where the x coordinate is stored in
+            ///register vx
+            ///and the y coordinate is stored in register vy
             Instruction::DISPLAY(vx, vy, n) => {
-                let value1 = self.registers.get_register(vx);
-                let value2 = self.registers.get_register(vy);
-                let start = self.registers.get_index_register() as usize;
-                let end = start + (n as usize);
-                let values = self.memory.read_bytes(start,end);
-                for x in values {
-                    println!("byte read: {:#04x}",x);
+                let x_coordinate = self.registers.get_register(vx) % DISPLAY_WIDTH as u8;
+                let y_coordinate = self.registers.get_register(vy) % DISPLAY_HEIGHT as u8;
+                
+                let sprite_start = self.registers.get_index_register() as usize;
+                let sprite_end = sprite_start + (n as usize);
+
+                //clear 0xf register
+                self.registers.set_register(0xF,0);
+
+                let values = self.memory.read_bytes(sprite_start, sprite_end);
+
+                //height is 0 through n
+                for row in 0..n {
+                    //width is always 8
+                    for col in 0..8 {
+                    //println!("byte read: {:#04x}", x);
+                    }
                 }
-                //println!("displaying. got {} from register{}, {} from register {}, and setting {} to {}",value1,vx, value2, vy,n,n);
             }
             _ => {
                 panic!("unimplemented instruction");
             }
         }
     }
-
+    //@todo: implement a timedelta to cycle at a fixed interval, instead of just sleep
     fn cycle(&mut self) {
         std::thread::sleep(std::time::Duration::from_millis(1000));
         let opcode = self.fetch(&self.memory);
@@ -298,13 +295,12 @@ impl CPU {
     fn new(rom: RomBuffer) -> Self {
         let mut memory = RAM::new();
         for (x, y) in rom.buffer.iter().enumerate() {
-            //println!("{:#04x}",y);
             memory.bytes[0x200 + x] = *y;
             //add all these bytes into memory, starting at 200
         }
 
         Self {
-            display: [false; 2048],
+            display: [false; DISPLAY_WIDTH * DISPLAY_HEIGHT],
             program_counter: 0x200,
             registers: Registers::new(),
             memory: memory,
