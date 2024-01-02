@@ -326,7 +326,7 @@ enum Instruction {
 }
 
 fn main() {
-    let b = RomBuffer::new("/home/vancha/Documenten/rust/chip8_emulator/ibmlogo.ch8");
+    let b = RomBuffer::new("./ibmlogo.ch8");
     let mut c = CPU::new(b);
 
     while true {
