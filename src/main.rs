@@ -18,13 +18,9 @@ impl RAM {
         }
     }
     fn get(self, index: u16) -> u16 {
-        //println!("value at {} is {}",index, self.bytes[index as usize]);
         return ((self.bytes[index as usize] as u16) << 8)
             | self.bytes[(index + 1) as usize] as u16;
     }
-    /*fn read_bytes(&self, start: usize, end: usize) -> &[u8] {
-        &self.bytes[start..end]
-    }*/
 }
 
 struct RomBuffer {
@@ -32,11 +28,12 @@ struct RomBuffer {
 }
 impl RomBuffer {
     fn new(file: &str) -> Self {
-        let mut data: Vec<u16> = vec![];
+        //let mut data: Vec<u16> = vec![];
+        
         let buffer: Vec<u8> = std::fs::read(file).unwrap();
         for (_, x) in buffer.chunks(2).enumerate() {
             let number = ((x[0] as u16) << 8) | x[1] as u16; // this might be wrong, maybe I don't want to convert endianness here
-            data.push(number);
+          //  data.push(number);
         }
         RomBuffer { buffer: buffer }
     }
@@ -209,6 +206,7 @@ impl CPU {
         code & 0xfff
     }
     fn display(&self) {
+        print!("{}[2J", 27 as char);
         for row in 0..DISPLAY_HEIGHT {
             for col in 0..DISPLAY_WIDTH {
                 let idx = row as usize * DISPLAY_WIDTH + col as usize;
@@ -326,7 +324,7 @@ enum Instruction {
 }
 
 fn main() {
-    let b = RomBuffer::new("./ibmlogo.ch8");
+    let b = RomBuffer::new("./testlogo.ch8");
     let mut c = CPU::new(b);
 
     loop {
