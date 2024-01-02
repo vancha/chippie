@@ -1,7 +1,8 @@
-use byteorder::{BigEndian, ByteOrder, LittleEndian};
+//use byteorder::{BigEndian, ByteOrder, LittleEndian};
 
 const DISPLAY_WIDTH: usize = 64;
 const DISPLAY_HEIGHT: usize = 32;
+const RAM_SIZE: usize = 4096;
 
 ///0x000 start of chip-8 ram
 ///0x000 to 0x080 reserved for fontset
@@ -10,16 +11,17 @@ const DISPLAY_HEIGHT: usize = 32;
 ///0xfff end of chip8 ram
 #[derive(Debug, Copy, Clone)]
 struct RAM {
-    bytes: [u8; 4096],
+    bytes: [u8; RAM_SIZE],
 }
 impl RAM {
     fn read_rom(location: &str) {}
 
     fn new() -> Self {
-        Self { bytes: [0; 4096] }
+        Self { bytes: [0; RAM_SIZE] }
     }
     fn get(self, index: u16) -> u16 {
-        return ((self.bytes[index as usize] as u16) << 8)
+        //println!("value at {} is {}",index, self.bytes[index as usize]);
+        return((self.bytes[index as usize] as u16) << 8)
             | self.bytes[(index + 1) as usize] as u16;
     }
     fn read_bytes(&self, start: usize, end: usize) -> &[u8] {
@@ -105,12 +107,12 @@ impl Registers {
             7 => self.v7,
             8 => self.v8,
             9 => self.v9,
-            10 => self.va,
-            11 => self.vb,
-            12 => self.vc,
-            13 => self.vd,
-            14 => self.ve,
-            15 => self.vf,
+            0xA => self.va,
+            0xB => self.vb,
+            0xC => self.vc,
+            0xD => self.vd,
+            0xE => self.ve,
+            0xF => self.vf,
             _ => {
                 panic!("Invalid register");
             }
@@ -213,7 +215,15 @@ impl CPU {
     fn oxxx(&self, code: u16) -> u16 {
         code & 0xfff
     }
-
+    fn display(&self) {
+        for row in 0..DISPLAY_HEIGHT {
+            for col in 0..DISPLAY_WIDTH {
+                let idx = row as usize *DISPLAY_WIDTH  + col as usize;
+                print!("{}", if self.display[idx] {"██"} else { "  "})
+            }
+            println!("");
+        }
+    }
     fn decode(&self, opcode: u16) -> Instruction {
         match self.xooo(opcode) {
             0x0 => match self.ooxx(opcode) {
@@ -249,29 +259,31 @@ impl CPU {
             Instruction::SET_INDEX_REGISTER(x) => {
                 self.registers.set_index_register(x);
             }
-            ///DXYN: draw sprite
-            ///The sprite to draw here is n-bytes tall, and 8 bytes wide
-            ///The position in memory where the sprite data starts is stored in register VI
-            ///the sprite will be drawn at location (X,Y) where the x coordinate is stored in
-            ///register vx
-            ///and the y coordinate is stored in register vy
+            //DXYN: draw sprite
+            //The sprite to draw here is n-bytes tall, and 8 bytes wide
+            //The position in memory where the sprite data starts is stored in register VI
+            //the sprite will be drawn at location (X,Y) where the x coordinate is stored in
+            //register vx
+            //and the y coordinate is stored in register vy
             Instruction::DISPLAY(vx, vy, n) => {
                 let x_coordinate = self.registers.get_register(vx) % DISPLAY_WIDTH as u8;
                 let y_coordinate = self.registers.get_register(vy) % DISPLAY_HEIGHT as u8;
-                
+                let sprite_location = self.registers.get_index_register();
+                let sprite = self.memory.get(sprite_location);
                 let sprite_start = self.registers.get_index_register() as usize;
                 let sprite_end = sprite_start + (n as usize);
-
+                
                 //clear 0xf register
                 self.registers.set_register(0xF,0);
 
-                let values = self.memory.read_bytes(sprite_start, sprite_end);
-
                 //height is 0 through n
-                for row in 0..n {
-                    //width is always 8
-                    for col in 0..8 {
-                    //println!("byte read: {:#04x}", x);
+                for byte in 0..n {
+                    let y = y_coordinate + byte;
+                    for bit in 0..8 {
+                        let x = self.registers.get_register(vx) + bit;
+                        let color = self.memory.bytes[sprite_start + byte as usize] >> (7 - bit) & 1;
+                        let idx = x as usize + DISPLAY_WIDTH *y as usize;
+                        self.display[idx] = if color == 1 { true } else { false};
                     }
                 }
             }
@@ -282,14 +294,17 @@ impl CPU {
     }
     //@todo: implement a timedelta to cycle at a fixed interval, instead of just sleep
     fn cycle(&mut self) {
-        std::thread::sleep(std::time::Duration::from_millis(1000));
+        //do this part 500 times a second
         let opcode = self.fetch(&self.memory);
-        self.program_counter = match self.program_counter + 2 < 4096 {
+        self.program_counter = match self.program_counter + 2 < RAM_SIZE as u16 {
             true => self.program_counter + 2,
             false => 0,
         };
         let instruction = self.decode(opcode);
         self.execute(instruction);
+
+        //do this part 60 times a second
+        self.display();
     }
 
     fn new(rom: RomBuffer) -> Self {
@@ -298,7 +313,6 @@ impl CPU {
             memory.bytes[0x200 + x] = *y;
             //add all these bytes into memory, starting at 200
         }
-
         Self {
             display: [false; DISPLAY_WIDTH * DISPLAY_HEIGHT],
             program_counter: 0x200,
