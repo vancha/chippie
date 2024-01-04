@@ -1,7 +1,8 @@
 const DISPLAY_WIDTH: usize = 64;
 const DISPLAY_HEIGHT: usize = 32;
-const RAM_SIZE: usize = 4096;
+const RAM_SIZE: usize = 4096;//in bytes :)
 
+///The ram of the chip8 cpu, uses big endian, and is laid out in the following way:
 ///0x000 start of chip-8 ram
 ///0x000 to 0x080 reserved for fontset
 ///0x200 start of most chip-8 programs
@@ -12,11 +13,13 @@ struct RAM {
     bytes: [u8; RAM_SIZE],
 }
 impl RAM {
+    ///Returns an empty ram object, no fonts, no rom, just empty bytes
     fn new() -> Self {
         Self {
             bytes: [0; RAM_SIZE],
         }
     }
+    ///returns a value from ram
     fn get(self, index: u16) -> u16 {
         return ((self.bytes[index as usize] as u16) << 8)
             | self.bytes[(index + 1) as usize] as u16;
@@ -28,16 +31,12 @@ struct RomBuffer {
 }
 impl RomBuffer {
     fn new(file: &str) -> Self {
-        //let mut data: Vec<u16> = vec![];
-        
         let buffer: Vec<u8> = std::fs::read(file).unwrap();
-        for (_, x) in buffer.chunks(2).enumerate() {
-            let number = ((x[0] as u16) << 8) | x[1] as u16; // this might be wrong, maybe I don't want to convert endianness here
-          //  data.push(number);
-        }
         RomBuffer { buffer: buffer }
     }
 }
+
+///# All 16 8 bit registers, and the 16 bit I register
 struct Registers {
     v0: u8,
     v1: u8,
@@ -56,8 +55,9 @@ struct Registers {
     ve: u8,
     vf: u8,
 
-    vindex: u16, //the seperate 16-bit I register,generally only used to store memory addresses in the lowest (rightmost) 12 bits
+    vindex: u16,
 }
+
 impl Registers {
     fn new() -> Self {
         Registers {
@@ -174,9 +174,17 @@ impl Stack {
         Stack { values: [0; 16] }
     }
 }
+
+///# The chip8 cpu, contains the ram, registers, stack and display
+///
+/// has a run method that's intended to be called 500 times a second,
+///also has a display method, which is intended to be called 60 times a second
 struct CPU {
+    ///The monochrome display
     display: [bool; DISPLAY_WIDTH * DISPLAY_HEIGHT],
-    program_counter: u16, //starts at 0x200, the start of the non-reserved memory
+    ///Program counter, used to keep track of what to fetch,decode and execute from ram, initialized at 0x200
+    program_counter: u16,
+
     memory: RAM,
     registers: Registers,
     stack: Stack, //stack for keeping track of where to return to after subroutine, can go into 16 nested subroutines before stackoverflow
@@ -187,76 +195,48 @@ impl CPU {
     fn fetch(&self, ram: &RAM) -> u16 {
         ram.get(self.program_counter)
     }
-    fn xooo(&self, code: u16) -> u8 {
-        ((code >> 12) & 0xF) as u8
-    }
-    fn oxoo(&self, code: u16) -> u8 {
-        ((code >> 8) & 0xf) as u8
-    }
-    fn ooxo(&self, code: u16) -> u8 {
-        ((code >> 4) & 0xf) as u8
-    }
-    fn ooox(&self, code: u16) -> u8 {
-        (code as u8) & 0xf
-    }
-    fn ooxx(&self, code: u16) -> u8 {
-        (code & 0xff) as u8
-    }
-    fn oxxx(&self, code: u16) -> u16 {
-        code & 0xfff
-    }
-    fn display(&self) {
-        print!("{}[2J", 27 as char);
-        for row in 0..DISPLAY_HEIGHT {
-            for col in 0..DISPLAY_WIDTH {
-                let idx = row as usize * DISPLAY_WIDTH + col as usize;
-                print!("{}", if self.display[idx] { "██" } else { "  " })
-            }
-            println!("");
-        }
-    }
+
     fn decode(&self, opcode: u16) -> Instruction {
         match self.xooo(opcode) {
             0x0 => match self.ooxx(opcode) {
                 0xE0 => Instruction::ClearScreen,
                 _ => panic!("what's going on {:#06x}", opcode),
             },
-            0x1 => Instruction::JUMP(self.oxxx(opcode)),
-            0x6 => Instruction::LoadRegisterVx(self.oxoo(opcode), self.ooxx(opcode)),
-            0x7 => Instruction::AddToRegister(self.oxoo(opcode), self.ooxx(opcode)),
-            0xA => Instruction::SetIndexRegister(self.oxxx(opcode)),
-            0xD => Instruction::DISPLAY(self.oxoo(opcode), self.ooxo(opcode), self.ooox(opcode)),
+            0x1 => Instruction::JUMP { nnn: self.oxxx(opcode) },
+            0x6 => Instruction::LoadRegisterVx { x: self.oxoo(opcode), kk: self.ooxx(opcode) },
+            0x7 => Instruction::AddToRegister { x: self.oxoo(opcode),kk: self.ooxx(opcode) },
+            0xA => Instruction::SetIndexRegister{ nnn: self.oxxx(opcode) },
+            0xD => Instruction::DISPLAY { x: self.oxoo(opcode), y: self.ooxo(opcode), n: self.ooox(opcode) },
             _ => {
                 panic!("cannot decode,opcode not implemented. ")
             }
         }
     }
-
+    ///Execute the instruction, for details on the instruction, check the instruction enum
+    ///definition
     fn execute(&mut self, instruction: Instruction) {
         match instruction {
-            Instruction::JUMP(x) => {
+            ///1nnn
+            Instruction::JUMP  { nnn: x } => {
                 self.program_counter = x;
             }
-            Instruction::AddToRegister(x, y) => {
+            ///7xkk
+            Instruction::AddToRegister { x: x, kk: y} => {
                 let tmp = self.registers.get_register(x) + y;
                 self.registers.set_register(x, tmp);
             }
             Instruction::ClearScreen => {
                 self.display.iter_mut().for_each(|x| *x = false);
             }
-            Instruction::LoadRegisterVx(x, y) => {
+            Instruction::LoadRegisterVx { x: x, kk: y } => {
                 self.registers.set_register(x, y);
             }
-            Instruction::SetIndexRegister(x) => {
+            ///
+            Instruction::SetIndexRegister { nnn: x } => {
                 self.registers.set_index_register(x);
             }
-            //DXYN: draw sprite
-            //The sprite to draw here is n-bytes tall, and 8 bytes wide
-            //The position in memory where the sprite data starts is stored in register VI
-            //the sprite will be drawn at location (X,Y) where the x coordinate is stored in
-            //register vx
-            //and the y coordinate is stored in register vy
-            Instruction::DISPLAY(vx, vy, n) => {
+            ///DXYN
+            Instruction::DISPLAY { x: vx, y: vy, n: n } => {
                 let x_coordinate = self.registers.get_register(vx) % DISPLAY_WIDTH as u8;
                 let y_coordinate = self.registers.get_register(vy) % DISPLAY_HEIGHT as u8;
                 let sprite_start = self.registers.get_index_register() as usize;
@@ -280,7 +260,39 @@ impl CPU {
             }
         }
     }
-    //@todo: implement a timedelta to cycle at a fixed interval, instead of just sleep
+
+    fn xooo(&self, code: u16) -> u8 {
+        ((code >> 12) & 0xF) as u8
+    }
+    fn oxoo(&self, code: u16) -> u8 {
+        ((code >> 8) & 0xf) as u8
+    }
+    fn ooxo(&self, code: u16) -> u8 {
+        ((code >> 4) & 0xf) as u8
+    }
+    fn ooox(&self, code: u16) -> u8 {
+        (code as u8) & 0xf
+    }
+    fn ooxx(&self, code: u16) -> u8 {
+        (code & 0xff) as u8
+    }
+    fn oxxx(&self, code: u16) -> u16 {
+        code & 0xfff
+    }
+
+    ///Shows contents of the display, ██ for set pixels, and two spaces for unset ones 
+    fn display(&self) {
+        //the special "clear screen" character for linux terminals
+        print!("{}[2J", 27 as char);
+        for row in 0..DISPLAY_HEIGHT {
+            for col in 0..DISPLAY_WIDTH {
+                let idx = row as usize * DISPLAY_WIDTH + col as usize;
+                print!("{}", if self.display[idx] { "██" } else { "  " })
+            }
+            println!("");
+        }
+    }
+
     fn cycle(&mut self) {
         //do this part 500 times a second
         let opcode = self.fetch(&self.memory);
@@ -312,15 +324,18 @@ impl CPU {
     }
 }
 
-///nnn is a hexadecimal memory address,nn is a hexadecimal byte, n refers to a nibble, and X and Y
-///are registeres
+///A list of every instruction in the chip8 language
+///nnn is a hexadecimal memory address, it's 12 bits long
+///nn is a hexadecimal byte, it's 8 bits
+///n is what's called a "nibble", it's 4 bits
+///X and Y are registers
 enum Instruction {
-    JUMP(u16),   //1nnn where nnn is a 12 bit value (lowest 12 bits of the instruction)
-    ClearScreen, //00E
-    AddToRegister(u8, u8),
-    LoadRegisterVx(u8, u8), //6xkk puts the value kk into Vx
-    SetIndexRegister(u16),  //ANNN set index register I to nnn
-    DISPLAY(u8, u8, u8), //DXYN draws a sprite at coordinate from vx and vy, of width 8 and height n
+    JUMP {nnn: u16 },   //1nnn where nnn is a 12 bit value (lowest 12 bits of the instruction)
+    ClearScreen, //clears the screen, does not take any arguments
+    AddToRegister { x: u8, kk: u8 },
+    LoadRegisterVx { x: u8,kk: u8 }, //6xkk puts the value kk into Vx
+    SetIndexRegister { nnn: u16 },  //ANNN set index register I to nnn
+    DISPLAY{ x: u8, y: u8, n: u8}, //DXYN draws a sprite at coordinate from vx and vy, of width 8 and height n
 }
 
 fn main() {
