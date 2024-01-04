@@ -203,7 +203,7 @@ impl CPU {
                 _ => panic!("what's going on {:#06x}", opcode),
             },
             0x1 => Instruction::JUMP { nnn: self.oxxx(opcode) },
-            0x3 => Instruction::SkipNextInstructionIfXIsKK {x: self.oxoo(opcode), kk: self.oxoo(opcode) },
+            0x3 => Instruction::SkipNextInstructionIfXIsKK {x: self.oxoo(opcode), kk: self.ooxx(opcode) },
             0x4 => Instruction::SkipNextInstructionIfXIsNotKK { x: self.oxoo(opcode), kk: self.ooxx(opcode) },
             0x5 => Instruction::SkipNextInstructionIfXIsY { x: self.oxoo(opcode), y: self.ooxo(opcode) },
             0x6 => Instruction::LoadRegisterVx { x: self.oxoo(opcode), kk: self.ooxx(opcode) },
