@@ -173,6 +173,7 @@ impl Stack {
     fn new() -> Self {
         Stack { values: [0; 16] }
     }
+
 }
 
 ///# The chip8 cpu, contains the ram, registers, stack and display
@@ -292,6 +293,9 @@ impl CPU {
                 self.program_counter += 2;
             },
             Instruction::CallSubroutineAtNNN { nnn: nnn } => {
+                self.stackpointer += 1;
+                self.stack.values[self.stackpointer as usize] = self.program_counter;
+                self.program_counter = nnn;
                  
             },
             ///00E0
