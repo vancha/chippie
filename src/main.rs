@@ -203,12 +203,16 @@ impl CPU {
                 _ => panic!("what's going on {:#06x}", opcode),
             },
             0x1 => Instruction::JUMP { nnn: self.oxxx(opcode) },
+            0x3 => Instruction::SkipNextInstructionIfXIsKK {x: self.oxoo(opcode), kk: self.oxoo(opcode) },
+            0x4 => Instruction::SkipNextInstructionIfXIsNotKK { x: self.oxoo(opcode), kk: self.ooxx(opcode) },
+            0x5 => Instruction::SkipNextInstructionIfXIsY { x: self.oxoo(opcode), y: self.ooxo(opcode) },
             0x6 => Instruction::LoadRegisterVx { x: self.oxoo(opcode), kk: self.ooxx(opcode) },
             0x7 => Instruction::AddToRegister { x: self.oxoo(opcode),kk: self.ooxx(opcode) },
+            0x9 => Instruction::SkipNextInstructionIfXIsNotY { x: self.oxoo(opcode), y: self.ooxo(opcode) },
             0xA => Instruction::SetIndexRegister{ nnn: self.oxxx(opcode) },
             0xD => Instruction::DISPLAY { x: self.oxoo(opcode), y: self.ooxo(opcode), n: self.ooox(opcode) },
             _ => {
-                panic!("cannot decode,opcode not implemented. ")
+                panic!("cannot decode,opcode not implemented: 0x{:04x}",opcode)
             }
         }
     }
@@ -216,25 +220,67 @@ impl CPU {
     ///definition
     fn execute(&mut self, instruction: Instruction) {
         match instruction {
-            ///1nnn
             Instruction::JUMP  { nnn: x } => {
                 self.program_counter = x;
+            },
+            ///3XKK
+            Instruction::SkipNextInstructionIfXIsKK { x: x, kk: kk } => {
+                if self.registers.get_register(x) == kk {
+                    self.program_counter += 4;
+                } else {
+                    self.program_counter += 2;
+                }
+            },
+            ///4XKK
+            Instruction::SkipNextInstructionIfXIsNotKK { x: x, kk: kk } => {
+                if self.registers.get_register(x) != kk {
+                    self.program_counter += 4;
+                } else {
+                    self.program_counter += 2;
+                }
+            },
+            ///5XY0
+            Instruction::SkipNextInstructionIfXIsY { x: x, y: y } => {
+                if self.registers.get_register(x) == self.registers.get_register(y) {
+                    self.program_counter += 4;
+                } else {
+                    self.program_counter += 2;
+                }
+            },
+            ///9XY0
+            Instruction::SkipNextInstructionIfXIsNotY { x: x, y: y } => {
+                if self.registers.get_register(x) != self.registers.get_register(y) {
+                    self.program_counter += 4;
+                } else {
+                    self.program_counter += 2;
+                }
             }
-            ///7xkk
+            ///7XKK
             Instruction::AddToRegister { x: x, kk: y} => {
-                let tmp = self.registers.get_register(x) + y;
-                self.registers.set_register(x, tmp);
-            }
+                let tmp = self.registers.get_register(x) as u16 + y as u16;
+                //this can happen, if it does, the result is made to fit in a u8 again
+                match tmp >= 255 {
+                    _ => { self.registers.set_register(x , tmp as u8); },
+                    //_ => {self.registers.set_register(x, tmp as u8); },
+                }
+                self.program_counter += 2;
+            },
+            ///00E0
             Instruction::ClearScreen => {
                 self.display.iter_mut().for_each(|x| *x = false);
-            }
+                self.program_counter += 2;
+            },
+            ///6XKK
             Instruction::LoadRegisterVx { x: x, kk: y } => {
+                println!("value {} has just been loaded in to register {}",y,x);
                 self.registers.set_register(x, y);
-            }
-            ///
+                self.program_counter += 2;
+            },
+            ///ANNN
             Instruction::SetIndexRegister { nnn: x } => {
                 self.registers.set_index_register(x);
-            }
+                self.program_counter += 2;
+            },
             ///DXYN
             Instruction::DISPLAY { x: vx, y: vy, n: n } => {
                 let x_coordinate = self.registers.get_register(vx) % DISPLAY_WIDTH as u8;
@@ -257,7 +303,8 @@ impl CPU {
                         self.display[display_index] = value;
                     }
                 }
-            }
+                self.program_counter += 2;
+            },
         }
     }
 
@@ -296,10 +343,6 @@ impl CPU {
     fn cycle(&mut self) {
         //do this part 500 times a second
         let opcode = self.fetch(&self.memory);
-        self.program_counter = match self.program_counter + 2 < RAM_SIZE as u16 {
-            true => self.program_counter + 2,
-            false => 0,
-        };
         let instruction = self.decode(opcode);
         self.execute(instruction);
 
@@ -335,11 +378,15 @@ enum Instruction {
     AddToRegister { x: u8, kk: u8 },
     LoadRegisterVx { x: u8,kk: u8 }, //6xkk puts the value kk into Vx
     SetIndexRegister { nnn: u16 },  //ANNN set index register I to nnn
+    SkipNextInstructionIfXIsKK {x: u8, kk: u8  }, //skips the next instruction only if the register X holds the value kk
+    SkipNextInstructionIfXIsNotKK { x: u8, kk: u8 },//same as previous, except skips if register x does not hold value kk
+    SkipNextInstructionIfXIsY { x: u8, y: u8 },
+    SkipNextInstructionIfXIsNotY { x: u8, y: u8 },
     DISPLAY{ x: u8, y: u8, n: u8}, //DXYN draws a sprite at coordinate from vx and vy, of width 8 and height n
 }
 
 fn main() {
-    let b = RomBuffer::new("./testlogo.ch8");
+    let b = RomBuffer::new("./testrom.ch8");
     let mut c = CPU::new(b);
 
     loop {
