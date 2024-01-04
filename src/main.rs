@@ -1,6 +1,6 @@
 const DISPLAY_WIDTH: usize = 64;
 const DISPLAY_HEIGHT: usize = 32;
-const RAM_SIZE: usize = 4096;//in bytes :)
+const RAM_SIZE: usize = 4096; //in bytes :)
 
 ///The ram of the chip8 cpu, uses big endian, and is laid out in the following way:
 ///0x000 start of chip-8 ram
@@ -176,15 +176,10 @@ impl Stack {
 }
 
 ///# The chip8 cpu, contains the ram, registers, stack and display
-///
-/// has a run method that's intended to be called 500 times a second,
-///also has a display method, which is intended to be called 60 times a second
 struct CPU {
-    ///The monochrome display
     display: [bool; DISPLAY_WIDTH * DISPLAY_HEIGHT],
     ///Program counter, used to keep track of what to fetch,decode and execute from ram, initialized at 0x200
     program_counter: u16,
-
     memory: RAM,
     registers: Registers,
     stack: Stack, //stack for keeping track of where to return to after subroutine, can go into 16 nested subroutines before stackoverflow
@@ -197,30 +192,59 @@ impl CPU {
     }
 
     fn decode(&self, opcode: u16) -> Instruction {
-        match self.xooo(opcode) {
+        match self.first_nibble(opcode) {
             0x0 => match self.ooxx(opcode) {
                 0xE0 => Instruction::ClearScreen,
                 _ => panic!("what's going on {:#06x}", opcode),
             },
-            0x1 => Instruction::JUMP { nnn: self.oxxx(opcode) },
-            0x3 => Instruction::SkipNextInstructionIfXIsKK {x: self.oxoo(opcode), kk: self.ooxx(opcode) },
-            0x4 => Instruction::SkipNextInstructionIfXIsNotKK { x: self.oxoo(opcode), kk: self.ooxx(opcode) },
-            0x5 => Instruction::SkipNextInstructionIfXIsY { x: self.oxoo(opcode), y: self.ooxo(opcode) },
-            0x6 => Instruction::LoadRegisterVx { x: self.oxoo(opcode), kk: self.ooxx(opcode) },
-            0x7 => Instruction::AddToRegister { x: self.oxoo(opcode),kk: self.ooxx(opcode) },
-            0x9 => Instruction::SkipNextInstructionIfXIsNotY { x: self.oxoo(opcode), y: self.ooxo(opcode) },
-            0xA => Instruction::SetIndexRegister{ nnn: self.oxxx(opcode) },
-            0xD => Instruction::DISPLAY { x: self.oxoo(opcode), y: self.ooxo(opcode), n: self.ooox(opcode) },
+            0x1 => Instruction::JUMP {
+                nnn: self.oxxx(opcode),
+            },
+            0x2 => Instruction::CallSubroutineAtNNN { 
+                nnn: self.oxxx(opcode), 
+            }, 
+            0x3 => Instruction::SkipNextInstructionIfXIsKK {
+                x: self.second_nibble(opcode),
+                kk: self.ooxx(opcode),
+            },
+            0x4 => Instruction::SkipNextInstructionIfXIsNotKK {
+                x: self.second_nibble(opcode),
+                kk: self.ooxx(opcode),
+            },
+            0x5 => Instruction::SkipNextInstructionIfXIsY {
+                x: self.second_nibble(opcode),
+                y: self.third_nibble(opcode),
+            },
+            0x6 => Instruction::LoadRegisterVx {
+                x: self.second_nibble(opcode),
+                kk: self.ooxx(opcode),
+            },
+            0x7 => Instruction::AddToRegister {
+                x: self.second_nibble(opcode),
+                kk: self.ooxx(opcode),
+            },
+            0x9 => Instruction::SkipNextInstructionIfXIsNotY {
+                x: self.second_nibble(opcode),
+                y: self.third_nibble(opcode),
+            },
+            0xA => Instruction::SetIndexRegister {
+                nnn: self.oxxx(opcode),
+            },
+            0xD => Instruction::DISPLAY {
+                x: self.second_nibble(opcode),
+                y: self.third_nibble(opcode),
+                n: self.fourth_nibble(opcode),
+            },
             _ => {
-                panic!("cannot decode,opcode not implemented: 0x{:04x}",opcode)
-            }
+                panic!("cannot decode,opcode not implemented: 0x{:04x}", opcode)
+            },
         }
     }
     ///Execute the instruction, for details on the instruction, check the instruction enum
     ///definition
     fn execute(&mut self, instruction: Instruction) {
         match instruction {
-            Instruction::JUMP  { nnn: x } => {
+            Instruction::JUMP { nnn: x } => {
                 self.program_counter = x;
             },
             ///3XKK
@@ -254,16 +278,21 @@ impl CPU {
                 } else {
                     self.program_counter += 2;
                 }
-            }
+            },
             ///7XKK
-            Instruction::AddToRegister { x: x, kk: y} => {
+            Instruction::AddToRegister { x: x, kk: y } => {
                 let tmp = self.registers.get_register(x) as u16 + y as u16;
                 //this can happen, if it does, the result is made to fit in a u8 again
                 match tmp >= 255 {
-                    _ => { self.registers.set_register(x , tmp as u8); },
+                    _ => {
+                        self.registers.set_register(x, tmp as u8);
+                    }
                     //_ => {self.registers.set_register(x, tmp as u8); },
                 }
                 self.program_counter += 2;
+            },
+            Instruction::CallSubroutineAtNNN { nnn: nnn } => {
+                 
             },
             ///00E0
             Instruction::ClearScreen => {
@@ -272,7 +301,7 @@ impl CPU {
             },
             ///6XKK
             Instruction::LoadRegisterVx { x: x, kk: y } => {
-                println!("value {} has just been loaded in to register {}",y,x);
+                println!("value {} has just been loaded in to register {}", y, x);
                 self.registers.set_register(x, y);
                 self.program_counter += 2;
             },
@@ -307,18 +336,19 @@ impl CPU {
             },
         }
     }
-
-    fn xooo(&self, code: u16) -> u8 {
-        ((code >> 12) & 0xF) as u8
+    //returns the first 4 bits of the opcode as a byte
+    fn first_nibble(&self, opcode: u16) -> u8 {
+         ((opcode >> 12) & 0xF) as u8
     }
-    fn oxoo(&self, code: u16) -> u8 {
-        ((code >> 8) & 0xf) as u8
+    //returns the second 4 bits of the opcode as a byte
+    fn second_nibble(&self, opcode: u16) -> u8 {
+        ((opcode >> 8) & 0xf) as u8
     }
-    fn ooxo(&self, code: u16) -> u8 {
-        ((code >> 4) & 0xf) as u8
+    fn third_nibble(&self, opcode: u16) -> u8 {
+        ((opcode >> 4) & 0xf) as u8
     }
-    fn ooox(&self, code: u16) -> u8 {
-        (code as u8) & 0xf
+    fn fourth_nibble(&self, opcode: u16) -> u8 {
+        (opcode as u8) & 0xf
     }
     fn ooxx(&self, code: u16) -> u8 {
         (code & 0xff) as u8
@@ -327,7 +357,7 @@ impl CPU {
         code & 0xfff
     }
 
-    ///Shows contents of the display, ██ for set pixels, and two spaces for unset ones 
+    ///Shows contents of the display, ██ for set pixels, and two spaces for unset ones
     fn display(&self) {
         //the special "clear screen" character for linux terminals
         print!("{}[2J", 27 as char);
@@ -373,16 +403,17 @@ impl CPU {
 ///n is what's called a "nibble", it's 4 bits
 ///X and Y are registers
 enum Instruction {
-    JUMP {nnn: u16 },   //1nnn where nnn is a 12 bit value (lowest 12 bits of the instruction)
-    ClearScreen, //clears the screen, does not take any arguments
+    JUMP { nnn: u16 }, //1nnn where nnn is a 12 bit value (lowest 12 bits of the instruction)
+    ClearScreen,       //clears the screen, does not take any arguments
     AddToRegister { x: u8, kk: u8 },
-    LoadRegisterVx { x: u8,kk: u8 }, //6xkk puts the value kk into Vx
-    SetIndexRegister { nnn: u16 },  //ANNN set index register I to nnn
-    SkipNextInstructionIfXIsKK {x: u8, kk: u8  }, //skips the next instruction only if the register X holds the value kk
-    SkipNextInstructionIfXIsNotKK { x: u8, kk: u8 },//same as previous, except skips if register x does not hold value kk
+    CallSubroutineAtNNN { nnn: u16 },
+    LoadRegisterVx { x: u8, kk: u8 }, //6xkk puts the value kk into Vx
+    SetIndexRegister { nnn: u16 },    //ANNN set index register I to nnn
+    SkipNextInstructionIfXIsKK { x: u8, kk: u8 }, //skips the next instruction only if the register X holds the value kk
+    SkipNextInstructionIfXIsNotKK { x: u8, kk: u8 }, //same as previous, except skips if register x does not hold value kk
     SkipNextInstructionIfXIsY { x: u8, y: u8 },
     SkipNextInstructionIfXIsNotY { x: u8, y: u8 },
-    DISPLAY{ x: u8, y: u8, n: u8}, //DXYN draws a sprite at coordinate from vx and vy, of width 8 and height n
+    DISPLAY { x: u8, y: u8, n: u8 }, //DXYN draws a sprite at coordinate from vx and vy, of width 8 and height n
 }
 
 fn main() {
