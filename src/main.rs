@@ -232,9 +232,10 @@ impl CPU {
                     x: self.second_nibble(opcode),
                     y: self.third_nibble(opcode),
                 },
-                0x1 => {
-                    panic!("8xy1, implement XOR here :D")
-                }
+                0x1 => Instruction::LoadXOrYinX {
+                    x: self.second_nibble(opcode),
+                    y: self.third_nibble(opcode),
+                },
                 _ => {
                     panic!("some other 8xxx thingy")
                 }
@@ -311,9 +312,17 @@ impl CPU {
                     }
                 }
             }
+            //8vx0
             Instruction::LoadRegisterXIntoY { x, y } => {
                 self.registers
                     .set_register(x, self.registers.get_register(y));
+            }
+            //8vx1
+            Instruction::LoadXOrYinX { x, y } => {
+                self.registers.set_register(
+                    x,
+                    self.registers.get_register(x) | self.registers.get_register(y),
+                );
             }
             //9XY0
             Instruction::SkipNextInstructionIfXIsNotY { x, y } => {
@@ -425,6 +434,7 @@ enum Instruction {
     AddToRegisterX { x: u8, kk: u8 },
     CallSubroutineAtNNN { nnn: u16 },
     LoadRegisterX { x: u8, kk: u8 }, //6xkk puts the value kk into Vx
+    LoadXOrYinX { x: u8, y: u8 },    //8xy1
     LoadRegisterXIntoY { x: u8, y: u8 }, //Stores the value of register Vy in register Vx
     ReturnFromSubroutine, //pops the previous program_counter from the stack and makes it active
     SetIndexRegister { nnn: u16 }, //ANNN set index register I to nnn
