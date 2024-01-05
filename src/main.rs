@@ -219,14 +219,26 @@ impl CPU {
                 x: self.second_nibble(opcode),
                 y: self.third_nibble(opcode),
             },
-            0x6 => Instruction::LoadRegisterVx {
+            0x6 => Instruction::LoadRegisterX {
                 x: self.second_nibble(opcode),
                 kk: self.ooxx(opcode),
             },
-            0x7 => Instruction::AddToRegister {
+            0x7 => Instruction::AddToRegisterX {
                 x: self.second_nibble(opcode),
                 kk: self.ooxx(opcode),
             },
+            0x8 => match self.fourth_nibble(opcode) {
+                0x0 => Instruction::LoadRegisterXIntoY {
+                        x: self.second_nibble(opcode),
+                        y: self.third_nibble(opcode),
+                    },
+                0x1 => {
+                    panic!("8xy1, implement XOR here :D")
+                },
+                _ => {
+                    panic!("some other 8xxx thingy")
+                }
+            }
             0x9 => Instruction::SkipNextInstructionIfXIsNotY {
                 x: self.second_nibble(opcode),
                 y: self.third_nibble(opcode),
@@ -286,11 +298,11 @@ impl CPU {
                 }
             }
             //6XKK
-            Instruction::LoadRegisterVx { x, kk} => {
+            Instruction::LoadRegisterX { x, kk} => {
                 self.registers.set_register(x, kk);
             }
             //7XKK
-            Instruction::AddToRegister { x, kk } => {
+            Instruction::AddToRegisterX { x, kk } => {
                 let tmp = self.registers.get_register(x) as u16 + kk as u16;
                 //this can happen, if it does, the result is made to fit in a u8 again
                 match tmp >= 255 {
@@ -298,6 +310,9 @@ impl CPU {
                         self.registers.set_register(x, tmp as u8);
                     }
                 }
+            }
+            Instruction::LoadRegisterXIntoY { x, y } => {
+                self.registers.set_register(x,self.registers.get_register(y));
             }
             //9XY0
             Instruction::SkipNextInstructionIfXIsNotY { x, y } => {
@@ -406,9 +421,10 @@ impl CPU {
 enum Instruction {
     JUMP { nnn: u16 }, //1nnn where nnn is a 12 bit value (lowest 12 bits of the instruction)
     ClearScreen,       //clears the screen, does not take any arguments
-    AddToRegister { x: u8, kk: u8 },
+    AddToRegisterX { x: u8, kk: u8 },
     CallSubroutineAtNNN { nnn: u16 },
-    LoadRegisterVx { x: u8, kk: u8 }, //6xkk puts the value kk into Vx
+    LoadRegisterX { x: u8, kk: u8 }, //6xkk puts the value kk into Vx
+    LoadRegisterXIntoY { x: u8, y: u8},//Stores the value of register Vy in register Vx
     ReturnFromSubroutine, //pops the previous program_counter from the stack and makes it active
     SetIndexRegister { nnn: u16 }, //ANNN set index register I to nnn
     SkipNextInstructionIfXIsKK { x: u8, kk: u8 }, //skips the next instruction only if the register X holds the value kk
