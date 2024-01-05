@@ -229,16 +229,16 @@ impl CPU {
             },
             0x8 => match self.fourth_nibble(opcode) {
                 0x0 => Instruction::LoadRegisterXIntoY {
-                        x: self.second_nibble(opcode),
-                        y: self.third_nibble(opcode),
-                    },
+                    x: self.second_nibble(opcode),
+                    y: self.third_nibble(opcode),
+                },
                 0x1 => {
                     panic!("8xy1, implement XOR here :D")
-                },
+                }
                 _ => {
                     panic!("some other 8xxx thingy")
                 }
-            }
+            },
             0x9 => Instruction::SkipNextInstructionIfXIsNotY {
                 x: self.second_nibble(opcode),
                 y: self.third_nibble(opcode),
@@ -298,7 +298,7 @@ impl CPU {
                 }
             }
             //6XKK
-            Instruction::LoadRegisterX { x, kk} => {
+            Instruction::LoadRegisterX { x, kk } => {
                 self.registers.set_register(x, kk);
             }
             //7XKK
@@ -312,7 +312,8 @@ impl CPU {
                 }
             }
             Instruction::LoadRegisterXIntoY { x, y } => {
-                self.registers.set_register(x,self.registers.get_register(y));
+                self.registers
+                    .set_register(x, self.registers.get_register(y));
             }
             //9XY0
             Instruction::SkipNextInstructionIfXIsNotY { x, y } => {
@@ -337,7 +338,7 @@ impl CPU {
                 //this may fail when drawing out of bounds? maybe add a check for that
                 for sprite_row in 0..n {
                     let sprite = self.memory.bytes[sprite_start + sprite_row as usize];
-                    println!("{} xoring to screen: {:08b}",sprite_row,sprite);
+                    println!("{} xoring to screen: {:08b}", sprite_row, sprite);
                     //width is always 8
                     for sprite_column in 0..8 {
                         let x = x_coordinate + sprite_column;
@@ -424,7 +425,7 @@ enum Instruction {
     AddToRegisterX { x: u8, kk: u8 },
     CallSubroutineAtNNN { nnn: u16 },
     LoadRegisterX { x: u8, kk: u8 }, //6xkk puts the value kk into Vx
-    LoadRegisterXIntoY { x: u8, y: u8},//Stores the value of register Vy in register Vx
+    LoadRegisterXIntoY { x: u8, y: u8 }, //Stores the value of register Vy in register Vx
     ReturnFromSubroutine, //pops the previous program_counter from the stack and makes it active
     SetIndexRegister { nnn: u16 }, //ANNN set index register I to nnn
     SkipNextInstructionIfXIsKK { x: u8, kk: u8 }, //skips the next instruction only if the register X holds the value kk
