@@ -173,7 +173,6 @@ impl Stack {
     fn new() -> Self {
         Stack { values: [0; 16] }
     }
-
 }
 
 ///# The chip8 cpu, contains the ram, registers, stack and display
@@ -194,16 +193,20 @@ impl CPU {
 
     fn decode(&self, opcode: u16) -> Instruction {
         match self.first_nibble(opcode) {
-            0x0 => match self.ooxx(opcode) {
+            0x00 => match self.ooxx(opcode) {
                 0xE0 => Instruction::ClearScreen,
+                0xEE => {
+                    println!("this does not seem to work.");
+                    Instruction::ReturnFromSubroutine
+                }
                 _ => panic!("what's going on {:#06x}", opcode),
             },
             0x1 => Instruction::JUMP {
                 nnn: self.oxxx(opcode),
             },
-            0x2 => Instruction::CallSubroutineAtNNN { 
-                nnn: self.oxxx(opcode), 
-            }, 
+            0x2 => Instruction::CallSubroutineAtNNN {
+                nnn: self.oxxx(opcode),
+            },
             0x3 => Instruction::SkipNextInstructionIfXIsKK {
                 x: self.second_nibble(opcode),
                 kk: self.ooxx(opcode),
@@ -238,7 +241,7 @@ impl CPU {
             },
             _ => {
                 panic!("cannot decode,opcode not implemented: 0x{:04x}", opcode)
-            },
+            }
         }
     }
     ///Execute the instruction, for details on the instruction, check the instruction enum
@@ -247,39 +250,31 @@ impl CPU {
         match instruction {
             Instruction::JUMP { nnn: x } => {
                 self.program_counter = x;
-            },
+            }
             ///3XKK
             Instruction::SkipNextInstructionIfXIsKK { x: x, kk: kk } => {
                 if self.registers.get_register(x) == kk {
-                    self.program_counter += 4;
-                } else {
                     self.program_counter += 2;
                 }
-            },
+            }
             ///4XKK
             Instruction::SkipNextInstructionIfXIsNotKK { x: x, kk: kk } => {
                 if self.registers.get_register(x) != kk {
-                    self.program_counter += 4;
-                } else {
                     self.program_counter += 2;
                 }
-            },
+            }
             ///5XY0
             Instruction::SkipNextInstructionIfXIsY { x: x, y: y } => {
                 if self.registers.get_register(x) == self.registers.get_register(y) {
-                    self.program_counter += 4;
-                } else {
                     self.program_counter += 2;
                 }
-            },
+            }
             ///9XY0
             Instruction::SkipNextInstructionIfXIsNotY { x: x, y: y } => {
                 if self.registers.get_register(x) != self.registers.get_register(y) {
-                    self.program_counter += 4;
-                } else {
                     self.program_counter += 2;
                 }
-            },
+            }
             ///7XKK
             Instruction::AddToRegister { x: x, kk: y } => {
                 let tmp = self.registers.get_register(x) as u16 + y as u16;
@@ -288,32 +283,32 @@ impl CPU {
                     _ => {
                         self.registers.set_register(x, tmp as u8);
                     }
-                    //_ => {self.registers.set_register(x, tmp as u8); },
                 }
-                self.program_counter += 2;
-            },
+            }
+            ///2NNN
             Instruction::CallSubroutineAtNNN { nnn: nnn } => {
                 self.stackpointer += 1;
                 self.stack.values[self.stackpointer as usize] = self.program_counter;
                 self.program_counter = nnn;
-                 
-            },
+            }
             ///00E0
             Instruction::ClearScreen => {
                 self.display.iter_mut().for_each(|x| *x = false);
-                self.program_counter += 2;
-            },
+            }
             ///6XKK
             Instruction::LoadRegisterVx { x: x, kk: y } => {
                 println!("value {} has just been loaded in to register {}", y, x);
                 self.registers.set_register(x, y);
-                self.program_counter += 2;
-            },
+            }
+            ///00EE
+            Instruction::ReturnFromSubroutine => {
+                self.program_counter = self.stack.values[self.stackpointer as usize];
+                self.stackpointer -= 1;
+            }
             ///ANNN
             Instruction::SetIndexRegister { nnn: x } => {
                 self.registers.set_index_register(x);
-                self.program_counter += 2;
-            },
+            }
             ///DXYN
             Instruction::DISPLAY { x: vx, y: vy, n: n } => {
                 let x_coordinate = self.registers.get_register(vx) % DISPLAY_WIDTH as u8;
@@ -336,13 +331,12 @@ impl CPU {
                         self.display[display_index] = value;
                     }
                 }
-                self.program_counter += 2;
-            },
+            }
         }
     }
     //returns the first 4 bits of the opcode as a byte
     fn first_nibble(&self, opcode: u16) -> u8 {
-         ((opcode >> 12) & 0xF) as u8
+        ((opcode >> 12) & 0xF) as u8
     }
     //returns the second 4 bits of the opcode as a byte
     fn second_nibble(&self, opcode: u16) -> u8 {
@@ -377,9 +371,11 @@ impl CPU {
     fn cycle(&mut self) {
         //do this part 500 times a second
         let opcode = self.fetch(&self.memory);
+
+        self.program_counter += 2;
+
         let instruction = self.decode(opcode);
         self.execute(instruction);
-
         //do this part 60 times a second
         self.display();
     }
@@ -412,7 +408,8 @@ enum Instruction {
     AddToRegister { x: u8, kk: u8 },
     CallSubroutineAtNNN { nnn: u16 },
     LoadRegisterVx { x: u8, kk: u8 }, //6xkk puts the value kk into Vx
-    SetIndexRegister { nnn: u16 },    //ANNN set index register I to nnn
+    ReturnFromSubroutine, //pops the previous program_counter from the stack and makes it active
+    SetIndexRegister { nnn: u16 }, //ANNN set index register I to nnn
     SkipNextInstructionIfXIsKK { x: u8, kk: u8 }, //skips the next instruction only if the register X holds the value kk
     SkipNextInstructionIfXIsNotKK { x: u8, kk: u8 }, //same as previous, except skips if register x does not hold value kk
     SkipNextInstructionIfXIsY { x: u8, y: u8 },
