@@ -248,36 +248,50 @@ impl CPU {
     ///definition
     fn execute(&mut self, instruction: Instruction) {
         match instruction {
-            Instruction::JUMP { nnn: x } => {
-                self.program_counter = x;
+            //00E0
+            Instruction::ClearScreen => {
+                self.display.iter_mut().for_each(|x| *x = false);
             }
-            ///3XKK
-            Instruction::SkipNextInstructionIfXIsKK { x: x, kk: kk } => {
+            //00EE
+            Instruction::ReturnFromSubroutine => {
+                self.program_counter = self.stack.values[self.stackpointer as usize];
+                self.stackpointer -= 1;
+            }
+            //0NNN
+            Instruction::JUMP { nnn } => {
+                self.program_counter = nnn;
+            }
+            //2NNN
+            Instruction::CallSubroutineAtNNN { nnn } => {
+                self.stackpointer += 1;
+                self.stack.values[self.stackpointer as usize] = self.program_counter;
+                self.program_counter = nnn;
+            }
+            //3XKK
+            Instruction::SkipNextInstructionIfXIsKK { x, kk } => {
                 if self.registers.get_register(x) == kk {
                     self.program_counter += 2;
                 }
             }
-            ///4XKK
-            Instruction::SkipNextInstructionIfXIsNotKK { x: x, kk: kk } => {
+            //4XKK
+            Instruction::SkipNextInstructionIfXIsNotKK { x, kk } => {
                 if self.registers.get_register(x) != kk {
                     self.program_counter += 2;
                 }
             }
-            ///5XY0
-            Instruction::SkipNextInstructionIfXIsY { x: x, y: y } => {
+            //5XY0
+            Instruction::SkipNextInstructionIfXIsY { x, y } => {
                 if self.registers.get_register(x) == self.registers.get_register(y) {
                     self.program_counter += 2;
                 }
             }
-            ///9XY0
-            Instruction::SkipNextInstructionIfXIsNotY { x: x, y: y } => {
-                if self.registers.get_register(x) != self.registers.get_register(y) {
-                    self.program_counter += 2;
-                }
+            //6XKK
+            Instruction::LoadRegisterVx { x, kk} => {
+                self.registers.set_register(x, kk);
             }
-            ///7XKK
-            Instruction::AddToRegister { x: x, kk: y } => {
-                let tmp = self.registers.get_register(x) as u16 + y as u16;
+            //7XKK
+            Instruction::AddToRegister { x, kk } => {
+                let tmp = self.registers.get_register(x) as u16 + kk as u16;
                 //this can happen, if it does, the result is made to fit in a u8 again
                 match tmp >= 255 {
                     _ => {
@@ -285,34 +299,20 @@ impl CPU {
                     }
                 }
             }
-            ///2NNN
-            Instruction::CallSubroutineAtNNN { nnn: nnn } => {
-                self.stackpointer += 1;
-                self.stack.values[self.stackpointer as usize] = self.program_counter;
-                self.program_counter = nnn;
+            //9XY0
+            Instruction::SkipNextInstructionIfXIsNotY { x, y } => {
+                if self.registers.get_register(x) != self.registers.get_register(y) {
+                    self.program_counter += 2;
+                }
             }
-            ///00E0
-            Instruction::ClearScreen => {
-                self.display.iter_mut().for_each(|x| *x = false);
+            //ANNN
+            Instruction::SetIndexRegister { nnn } => {
+                self.registers.set_index_register(nnn);
             }
-            ///6XKK
-            Instruction::LoadRegisterVx { x: x, kk: y } => {
-                println!("value {} has just been loaded in to register {}", y, x);
-                self.registers.set_register(x, y);
-            }
-            ///00EE
-            Instruction::ReturnFromSubroutine => {
-                self.program_counter = self.stack.values[self.stackpointer as usize];
-                self.stackpointer -= 1;
-            }
-            ///ANNN
-            Instruction::SetIndexRegister { nnn: x } => {
-                self.registers.set_index_register(x);
-            }
-            ///DXYN
-            Instruction::DISPLAY { x: vx, y: vy, n: n } => {
-                let x_coordinate = self.registers.get_register(vx) % DISPLAY_WIDTH as u8;
-                let y_coordinate = self.registers.get_register(vy) % DISPLAY_HEIGHT as u8;
+            //DXYN
+            Instruction::DISPLAY { x, y, n } => {
+                let x_coordinate = self.registers.get_register(x) % DISPLAY_WIDTH as u8;
+                let y_coordinate = self.registers.get_register(y) % DISPLAY_HEIGHT as u8;
                 let sprite_start = self.registers.get_index_register() as usize;
 
                 //clear 0xf register
@@ -322,6 +322,7 @@ impl CPU {
                 //this may fail when drawing out of bounds? maybe add a check for that
                 for sprite_row in 0..n {
                     let sprite = self.memory.bytes[sprite_start + sprite_row as usize];
+                    println!("{} xoring to screen: {:08b}",sprite_row,sprite);
                     //width is always 8
                     for sprite_column in 0..8 {
                         let x = x_coordinate + sprite_column;
