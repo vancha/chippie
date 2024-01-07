@@ -235,6 +235,23 @@ impl CPU {
                 0x1 => Instruction::LoadXOrYinX {
                     x: self.second_nibble(opcode),
                     y: self.third_nibble(opcode),
+                }, 
+                0x2 => Instruction::LoadXAndYInX {
+                    x: self.second_nibble(opcode),
+                    y: self.third_nibble(opcode),
+                },
+                0x3 => Instruction::LoadXXorYInX {
+                    x: self.second_nibble(opcode),
+                    y: self.third_nibble(opcode),
+                },
+
+                0x4 => Instruction::AddYToX {
+                    x: self.second_nibble(opcode),
+                    y: self.third_nibble(opcode),
+                }, 
+                0x5 => Instruction::SubYFromX {
+                    x: self.second_nibble(opcode),
+                    y: self.third_nibble(opcode),
                 },
                 _ => {
                     panic!("some other 8xxx thingy")
@@ -312,17 +329,62 @@ impl CPU {
                     }
                 }
             }
-            //8vx0
+            //8xy0
             Instruction::LoadRegisterXIntoY { x, y } => {
                 self.registers
                     .set_register(x, self.registers.get_register(y));
             }
-            //8vx1
+            //8xy1
             Instruction::LoadXOrYinX { x, y } => {
                 self.registers.set_register(
                     x,
                     self.registers.get_register(x) | self.registers.get_register(y),
                 );
+            }
+            //8xy2
+            Instruction::LoadXAndYInX { x, y } => {
+                self.registers.set_register(
+                    x,
+                    self.registers.get_register(x) & self.registers.get_register(y),
+                );
+            }
+            //8xy3
+            Instruction::LoadXXorYInX { x, y } => {
+                self.registers.set_register(
+                    x,
+                    self.registers.get_register(x) ^ self.registers.get_register(y),
+                );
+            }
+            //8xy4
+            Instruction::AddYToX { x, y } => {
+                let res = self.registers.get_register(x) as u16 + self.registers.get_register(y) as u16;
+                if res > 255 {
+                    self.registers.set_register(0xF, 1);
+                } else {
+                    self.registers.set_register(0xF, 0);
+                }
+
+                self.registers.set_register(
+                    x,
+                    (self.registers.get_register(x) as u16 + self.registers.get_register(y) as u16) as u8,
+                );
+            }
+            //8xy5
+            Instruction::SubYFromX { x, y } => {
+                let vx = self.registers.get_register(x);
+                let vy = self.registers.get_register(y);
+                let res = vx.overflowing_sub(vy);
+
+                match res {
+                    (_, true) => {
+                        self.registers.set_register(0xF, 1);
+                    },
+                    (_, false) => {
+                        self.registers.set_register(0xF, 0);
+                    }
+                }
+                self.registers.set_register(x, res.0);
+
             }
             //9XY0
             Instruction::SkipNextInstructionIfXIsNotY { x, y } => {
@@ -435,6 +497,10 @@ enum Instruction {
     CallSubroutineAtNNN { nnn: u16 },
     LoadRegisterX { x: u8, kk: u8 }, //6xkk puts the value kk into Vx
     LoadXOrYinX { x: u8, y: u8 },    //8xy1
+    LoadXAndYInX { x: u8, y: u8 }, //8xy2
+    LoadXXorYInX { x: u8, y: u8 }, //8xy3
+    AddYToX {x: u8, y: u8 },//8xy4
+    SubYFromX {x: u8, y: u8 },//8xy5
     LoadRegisterXIntoY { x: u8, y: u8 }, //Stores the value of register Vy in register Vx
     ReturnFromSubroutine, //pops the previous program_counter from the stack and makes it active
     SetIndexRegister { nnn: u16 }, //ANNN set index register I to nnn
