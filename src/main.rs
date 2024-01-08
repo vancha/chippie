@@ -56,6 +56,7 @@ struct Registers {
     vf: u8,
 
     vindex: u16,
+    delay_timer: u8,
 }
 
 impl Registers {
@@ -78,6 +79,7 @@ impl Registers {
             ve: 0,
             vf: 0,
             vindex: 0,
+            delay_timer: 0,
         }
     }
     fn set_index_register(&mut self, value: u16) {
@@ -193,7 +195,7 @@ impl CPU {
 
     fn decode(&self, opcode: u16) -> Instruction {
         match self.first_nibble(opcode) {
-            0x00 => match self.ooxx(opcode) {
+            0x00 => match self.last_byte(opcode) {
                 0xE0 => Instruction::ClearScreen,
                 0xEE => {
                     println!("this does not seem to work.");
@@ -209,11 +211,11 @@ impl CPU {
             },
             0x3 => Instruction::SkipNextInstructionIfXIsKK {
                 x: self.second_nibble(opcode),
-                kk: self.ooxx(opcode),
+                kk: self.last_byte(opcode),
             },
             0x4 => Instruction::SkipNextInstructionIfXIsNotKK {
                 x: self.second_nibble(opcode),
-                kk: self.ooxx(opcode),
+                kk: self.last_byte(opcode),
             },
             0x5 => Instruction::SkipNextInstructionIfXIsY {
                 x: self.second_nibble(opcode),
@@ -221,11 +223,11 @@ impl CPU {
             },
             0x6 => Instruction::LoadRegisterX {
                 x: self.second_nibble(opcode),
-                kk: self.ooxx(opcode),
+                kk: self.last_byte(opcode),
             },
             0x7 => Instruction::AddToRegisterX {
                 x: self.second_nibble(opcode),
-                kk: self.ooxx(opcode),
+                kk: self.last_byte(opcode),
             },
             0x8 => match self.fourth_nibble(opcode) {
                 0x0 => Instruction::LoadRegisterXIntoY {
@@ -253,6 +255,17 @@ impl CPU {
                     x: self.second_nibble(opcode),
                     y: self.third_nibble(opcode),
                 },
+                0x6 => Instruction::ShiftXRight1 {
+                    x: self.second_nibble(opcode),
+                },
+                0x7 => Instruction::SubXFromY {
+                    x: self.second_nibble(opcode),
+                    y: self.third_nibble(opcode),
+                },
+
+                0xE => Instruction::ShiftXLeft1 {
+                    x: self.second_nibble(opcode),
+                },
                 _ => {
                     panic!("some other 8xxx thingy")
                 }
@@ -268,6 +281,19 @@ impl CPU {
                 x: self.second_nibble(opcode),
                 y: self.third_nibble(opcode),
                 n: self.fourth_nibble(opcode),
+            },
+            0xF => {
+                match self.last_byte(opcode) {
+                    0x15 => {
+                        Instruction::SetDelayTimerToX { x: self.second_nibble(opcode) }
+                    },
+                    0x65 => {
+                        Instruction::Load0ThroughX { x: self.second_nibble(opcode) }
+                    }
+                    _ => {
+                        panic!("{:0x}",opcode)
+                    },
+                }
             },
             _ => {
                 panic!("cannot decode,opcode not implemented: 0x{:04x}", opcode)
@@ -386,6 +412,41 @@ impl CPU {
                 self.registers.set_register(x, res.0);
 
             }
+
+            //8xy6
+            Instruction::ShiftXRight1 { x } => {
+                let vx = self.registers.get_register(x);
+                self.registers.set_register(0xF, vx & 0b1);
+                self.registers.set_register(
+                    x, vx >> 1
+                );
+            }
+
+            //8xyE
+            Instruction::ShiftXLeft1 { x } => {
+                let vx = self.registers.get_register(x);
+                self.registers.set_register(0xF, vx << 7 & 0b1);
+                self.registers.set_register(
+                    x, vx << 1
+                );
+            }
+            //8xy7
+            Instruction::SubXFromY { x, y } => {
+                let vx = self.registers.get_register(x);
+                let vy = self.registers.get_register(y);
+                let res = vy.overflowing_sub(vx);
+
+                match res {
+                    (_, true) => {
+                        self.registers.set_register(0xF, 1);
+                    },
+                    (_, false) => {
+                        self.registers.set_register(0xF, 0);
+                    }
+                }
+                self.registers.set_register(x, res.0);
+
+            }
             //9XY0
             Instruction::SkipNextInstructionIfXIsNotY { x, y } => {
                 if self.registers.get_register(x) != self.registers.get_register(y) {
@@ -420,6 +481,18 @@ impl CPU {
                     }
                 }
             }
+            Instruction::SetDelayTimerToX { x } => {
+                self.registers.delay_timer = self.registers.get_register(x);
+            },
+            Instruction::Load0ThroughX { x } => {
+                let idx = self.registers.get_index_register();
+                let value = self.memory.bytes[idx as usize];
+                for i in 0..x {
+                    self.registers.set_register(i,self.memory.bytes[idx as usize + i as usize]);
+                    println!("Loading {} out if {}",i,x);
+                }
+                panic!("I: {}, value: {} , wtf am i supposed to do here? :o",self.registers.get_index_register(), value)
+            }
         }
     }
     //returns the first 4 bits of the opcode as a byte
@@ -436,7 +509,8 @@ impl CPU {
     fn fourth_nibble(&self, opcode: u16) -> u8 {
         (opcode as u8) & 0xf
     }
-    fn ooxx(&self, code: u16) -> u8 {
+    //returns the last byte
+    fn last_byte(&self, code: u16) -> u8 {
         (code & 0xff) as u8
     }
     fn oxxx(&self, code: u16) -> u16 {
@@ -501,6 +575,9 @@ enum Instruction {
     LoadXXorYInX { x: u8, y: u8 }, //8xy3
     AddYToX {x: u8, y: u8 },//8xy4
     SubYFromX {x: u8, y: u8 },//8xy5
+    ShiftXRight1 { x: u8 },//8xy6
+    ShiftXLeft1 { x: u8 },//8xyE
+    SubXFromY { x: u8, y: u8 },//8xy7
     LoadRegisterXIntoY { x: u8, y: u8 }, //Stores the value of register Vy in register Vx
     ReturnFromSubroutine, //pops the previous program_counter from the stack and makes it active
     SetIndexRegister { nnn: u16 }, //ANNN set index register I to nnn
@@ -509,6 +586,8 @@ enum Instruction {
     SkipNextInstructionIfXIsY { x: u8, y: u8 },
     SkipNextInstructionIfXIsNotY { x: u8, y: u8 },
     DISPLAY { x: u8, y: u8, n: u8 }, //DXYN draws a sprite at coordinate from vx and vy, of width 8 and height n
+    SetDelayTimerToX { x: u8 },//Fx15
+    Load0ThroughX { x: u8 },
 }
 
 fn main() {
