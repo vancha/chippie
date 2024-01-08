@@ -487,11 +487,11 @@ impl CPU {
             Instruction::Load0ThroughX { x } => {
                 let idx = self.registers.get_index_register();
                 let value = self.memory.bytes[idx as usize];
-                for i in 0..x {
+                for i in 0..x+1 {
                     self.registers.set_register(i,self.memory.bytes[idx as usize + i as usize]);
                     println!("Loading {} out if {}",i,x);
                 }
-                panic!("I: {}, value: {} , wtf am i supposed to do here? :o",self.registers.get_index_register(), value)
+                //panic!("I: {}, value: {} , wtf am i supposed to do here? :o",self.registers.get_index_register(), value)
             }
         }
     }
