@@ -287,6 +287,9 @@ impl CPU {
                     0x15 => {
                         Instruction::SetDelayTimerToX { x: self.second_nibble(opcode) }
                     },
+                    0x55 => {
+                        Instruction::Write0ThroughX { x: self.second_nibble(opcode) }
+                    },
                     0x65 => {
                         Instruction::Load0ThroughX { x: self.second_nibble(opcode) }
                     }
@@ -481,17 +484,30 @@ impl CPU {
                     }
                 }
             }
+            //fx15
             Instruction::SetDelayTimerToX { x } => {
                 self.registers.delay_timer = self.registers.get_register(x);
+            }
+            //fx55
+            Instruction::Write0ThroughX {x } => {
+                let start_storing_at = self.registers.get_index_register();
+
+                for register in 0..x+1 {
+                    let register_value = self.registers.get_register(register);
+                    self.memory.bytes[start_storing_at as usize + register as usize ] = register_value;    
+                }
             },
+            //fx65
             Instruction::Load0ThroughX { x } => {
                 let idx = self.registers.get_index_register();
                 let value = self.memory.bytes[idx as usize];
                 for i in 0..x+1 {
                     self.registers.set_register(i,self.memory.bytes[idx as usize + i as usize]);
-                    println!("Loading {} out if {}",i,x);
                 }
-                //panic!("I: {}, value: {} , wtf am i supposed to do here? :o",self.registers.get_index_register(), value)
+            }
+
+            //fx55
+            Instruction::Write0ThroughX { x } => {
             }
         }
     }
@@ -587,7 +603,8 @@ enum Instruction {
     SkipNextInstructionIfXIsNotY { x: u8, y: u8 },
     DISPLAY { x: u8, y: u8, n: u8 }, //DXYN draws a sprite at coordinate from vx and vy, of width 8 and height n
     SetDelayTimerToX { x: u8 },//Fx15
-    Load0ThroughX { x: u8 },
+    Write0ThroughX { x: u8 }, //fx55
+    Load0ThroughX { x: u8 },//fx65
 }
 
 fn main() {
