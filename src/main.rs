@@ -287,6 +287,9 @@ impl CPU {
                     0x15 => {
                         Instruction::SetDelayTimerToX { x: self.second_nibble(opcode) }
                     },
+                    0x33 => {
+                        Instruction::LoadBCDOfX { x: self.second_nibble(opcode) }
+                    }
                     0x55 => {
                         Instruction::Write0ThroughX { x: self.second_nibble(opcode) }
                     },
@@ -488,6 +491,24 @@ impl CPU {
             Instruction::SetDelayTimerToX { x } => {
                 self.registers.delay_timer = self.registers.get_register(x);
             }
+            Instruction::LoadBCDOfX { x } => {
+                let store_index = self.registers.get_index_register();
+                let value_to_convert = self.registers.get_register(x);
+                
+                let str_representation:String = format!("{:0>3}",value_to_convert);//value_to_convert.to_string();
+                for (idx, value) in str_representation.chars().enumerate() {
+                    let valx = value.to_string().parse::<i32>().unwrap() as u8;
+                    println!("char: {}",valx);
+                    let tenth_power = (str_representation.len()-idx)-1;
+                    println!("10th power: {}",tenth_power);
+                    let rip = valx as u8 * (10u8.pow(tenth_power as u32));
+                    println!("value: {}",rip);//value.to_string().parse::<i32>().unwrap() * (10 ^(str_representation.len()-1 - idx)) as i32);
+                    self.memory.bytes[store_index as usize +idx] = rip as u8;
+                }
+
+                //panic!("Value to convert: {}",value_to_convert);
+                //println!("pew pew :D");
+            },
             //fx55
             Instruction::Write0ThroughX {x } => {
                 let start_storing_at = self.registers.get_index_register();
@@ -537,13 +558,15 @@ impl CPU {
     fn display(&self) {
         //the special "clear screen" character for linux terminals
         print!("{}[2J", 27 as char);
+        let mut output_buffer = "".to_string();
         for row in 0..DISPLAY_HEIGHT {
             for col in 0..DISPLAY_WIDTH {
                 let idx = row as usize * DISPLAY_WIDTH + col as usize;
-                print!("{}", if self.display[idx] { "██" } else { "  " })
+                output_buffer = format!("{}{}",output_buffer, if self.display[idx] { "██" } else { "  " });
             }
-            println!("");
+            output_buffer = format!("{}{}",output_buffer,"\n");
         }
+        println!("{}",output_buffer);
     }
 
     fn cycle(&mut self) {
@@ -603,12 +626,13 @@ enum Instruction {
     SkipNextInstructionIfXIsNotY { x: u8, y: u8 },
     DISPLAY { x: u8, y: u8, n: u8 }, //DXYN draws a sprite at coordinate from vx and vy, of width 8 and height n
     SetDelayTimerToX { x: u8 },//Fx15
+    LoadBCDOfX { x: u8 },//fx33
     Write0ThroughX { x: u8 }, //fx55
     Load0ThroughX { x: u8 },//fx65
 }
 
 fn main() {
-    let b = RomBuffer::new("./testrom.ch8");
+    let b = RomBuffer::new("./ibmlogo.ch8");
     let mut c = CPU::new(b);
 
     loop {
