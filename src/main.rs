@@ -205,17 +205,14 @@ struct CPU {
 //adds the option to draw the display of the cpu
 impl Widget for CPU {
     fn render(self, _area: Rect, buf: &mut Buffer) {
-        buf.set_string(0, 0, "HERRo!".to_string(), Style::default());
         for row in 0..DISPLAY_HEIGHT {
             for col in 0..DISPLAY_WIDTH {
                 let idx = row as usize * DISPLAY_WIDTH + col as usize;
                 buf.get_mut(col as u16, row as u16)
                     .set_char(match self.display[idx] {
-                        true => '█',
-                        _ => ' ',
-                    })
-                    .set_fg(Color::White)
-                    .set_bg(Color::Black);
+                        true => '█',//row.to_string().chars().into_iter().nth(0).unwrap(),
+                        false => ' ',
+                    });
             }
         }
     }
@@ -448,10 +445,10 @@ impl CPU {
 
                 match res {
                     (_, true) => {
-                        self.registers.set_register(0xF, 1);
+                        self.registers.set_register(0xF, 0);
                     }
                     (_, false) => {
-                        self.registers.set_register(0xF, 0);
+                        self.registers.set_register(0xF, 1);
                     }
                 }
                 self.registers.set_register(x, res.0);
@@ -642,7 +639,7 @@ enum Instruction {
 
 fn main() -> Result<()> {
     //creating a chip8 cpu object with a rom loaded
-    let b = RomBuffer::new("./testrom.ch8");
+    let b = RomBuffer::new("./flagstest.ch8");
     let mut c = CPU::new(b);
 
     //folowing code is all for setting up the tui library "ratatui"
