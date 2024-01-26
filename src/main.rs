@@ -1,6 +1,19 @@
+use crossterm::{
+    event::{self, KeyCode, KeyEventKind},
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    ExecutableCommand,
+};
+use ratatui::prelude::Color;
+use ratatui::{
+    prelude::{Buffer, CrosstermBackend, Rect, Style, Terminal},
+    widgets::Widget,
+};
+use std::io::{stdout, Result};
+
 const DISPLAY_WIDTH: usize = 64;
 const DISPLAY_HEIGHT: usize = 32;
 const RAM_SIZE: usize = 4096; //in bytes :)
+const CYCLES_PER_FRAME: usize = 15;
 
 ///The ram of the chip8 cpu, uses big endian, and is laid out in the following way:
 ///0x000 start of chip-8 ram
@@ -35,7 +48,7 @@ impl RomBuffer {
         RomBuffer { buffer: buffer }
     }
 }
-
+#[derive(Clone, Copy)]
 ///# All 16 8 bit registers, and the 16 bit I register
 struct Registers {
     v0: u8,
@@ -168,6 +181,7 @@ impl Registers {
     }
 }
 
+#[derive(Clone, Copy)]
 struct Stack {
     values: [u16; 16],
 }
@@ -177,7 +191,7 @@ impl Stack {
     }
 }
 
-///# The chip8 cpu, contains the ram, registers, stack and display
+#[derive(Clone, Copy)]
 struct CPU {
     display: [bool; DISPLAY_WIDTH * DISPLAY_HEIGHT],
     ///Program counter, used to keep track of what to fetch,decode and execute from ram, initialized at 0x200
@@ -188,6 +202,24 @@ struct CPU {
     stackpointer: u8, //only contains indexes to locations in the stack, so 0 through 15
 }
 
+//adds the option to draw the display of the cpu
+impl Widget for CPU {
+    fn render(self, _area: Rect, buf: &mut Buffer) {
+        buf.set_string(0, 0, "HERRo!".to_string(), Style::default());
+        for row in 0..DISPLAY_HEIGHT {
+            for col in 0..DISPLAY_WIDTH {
+                let idx = row as usize * DISPLAY_WIDTH + col as usize;
+                buf.get_mut(col as u16, row as u16)
+                    .set_char(match self.display[idx] {
+                        true => '█',
+                        _ => ' ',
+                    })
+                    .set_fg(Color::White)
+                    .set_bg(Color::Black);
+            }
+        }
+    }
+}
 impl CPU {
     fn fetch(&self, ram: &RAM) -> u16 {
         ram.get(self.program_counter)
@@ -198,7 +230,6 @@ impl CPU {
             0x00 => match self.last_byte(opcode) {
                 0xE0 => Instruction::ClearScreen,
                 0xEE => {
-                    println!("this does not seem to work.");
                     Instruction::ReturnFromSubroutine
                 }
                 _ => panic!("what's going on {:#06x}", opcode),
@@ -237,7 +268,7 @@ impl CPU {
                 0x1 => Instruction::LoadXOrYinX {
                     x: self.second_nibble(opcode),
                     y: self.third_nibble(opcode),
-                }, 
+                },
                 0x2 => Instruction::LoadXAndYInX {
                     x: self.second_nibble(opcode),
                     y: self.third_nibble(opcode),
@@ -250,7 +281,7 @@ impl CPU {
                 0x4 => Instruction::AddYToX {
                     x: self.second_nibble(opcode),
                     y: self.third_nibble(opcode),
-                }, 
+                },
                 0x5 => Instruction::SubYFromX {
                     x: self.second_nibble(opcode),
                     y: self.third_nibble(opcode),
@@ -282,23 +313,25 @@ impl CPU {
                 y: self.third_nibble(opcode),
                 n: self.fourth_nibble(opcode),
             },
-            0xF => {
-                match self.last_byte(opcode) {
-                    0x15 => {
-                        Instruction::SetDelayTimerToX { x: self.second_nibble(opcode) }
-                    },
-                    0x33 => {
-                        Instruction::LoadBCDOfX { x: self.second_nibble(opcode) }
-                    }
-                    0x55 => {
-                        Instruction::Write0ThroughX { x: self.second_nibble(opcode) }
-                    },
-                    0x65 => {
-                        Instruction::Load0ThroughX { x: self.second_nibble(opcode) }
-                    }
-                    _ => {
-                        panic!("{:0x}",opcode)
-                    },
+            0xF => match self.last_byte(opcode) {
+                0x15 => Instruction::SetDelayTimerToX {
+                    x: self.second_nibble(opcode),
+                },
+                0x1E => Instruction::AddXtoI {
+                    x: self.second_nibble(opcode),
+                },
+                0x33 => Instruction::LoadBCDOfX {
+                    x: self.second_nibble(opcode),
+                },
+                0x55 => Instruction::Write0ThroughX {
+                    x: self.second_nibble(opcode),
+                },
+                0x65 => Instruction::Load0ThroughX {
+                    x: self.second_nibble(opcode),
+                },
+                _ => {
+                    print!("0xf, also unimplemented: {:0x}", opcode);
+                    return Instruction::NOOP { };
                 }
             },
             _ => {
@@ -310,6 +343,10 @@ impl CPU {
     ///definition
     fn execute(&mut self, instruction: Instruction) {
         match instruction {
+            Instruction::NOOP { }=> {
+                println!("hi");
+                //println!("nooping");
+            }
             //00E0
             Instruction::ClearScreen => {
                 self.display.iter_mut().for_each(|x| *x = false);
@@ -389,7 +426,8 @@ impl CPU {
             }
             //8xy4
             Instruction::AddYToX { x, y } => {
-                let res = self.registers.get_register(x) as u16 + self.registers.get_register(y) as u16;
+                let res =
+                    self.registers.get_register(x) as u16 + self.registers.get_register(y) as u16;
                 if res > 255 {
                     self.registers.set_register(0xF, 1);
                 } else {
@@ -398,7 +436,8 @@ impl CPU {
 
                 self.registers.set_register(
                     x,
-                    (self.registers.get_register(x) as u16 + self.registers.get_register(y) as u16) as u8,
+                    (self.registers.get_register(x) as u16 + self.registers.get_register(y) as u16)
+                        as u8,
                 );
             }
             //8xy5
@@ -410,31 +449,26 @@ impl CPU {
                 match res {
                     (_, true) => {
                         self.registers.set_register(0xF, 1);
-                    },
+                    }
                     (_, false) => {
                         self.registers.set_register(0xF, 0);
                     }
                 }
                 self.registers.set_register(x, res.0);
-
             }
 
             //8xy6
             Instruction::ShiftXRight1 { x } => {
                 let vx = self.registers.get_register(x);
                 self.registers.set_register(0xF, vx & 0b1);
-                self.registers.set_register(
-                    x, vx >> 1
-                );
+                self.registers.set_register(x, vx >> 1);
             }
 
             //8xyE
             Instruction::ShiftXLeft1 { x } => {
                 let vx = self.registers.get_register(x);
                 self.registers.set_register(0xF, vx << 7 & 0b1);
-                self.registers.set_register(
-                    x, vx << 1
-                );
+                self.registers.set_register(x, vx << 1);
             }
             //8xy7
             Instruction::SubXFromY { x, y } => {
@@ -445,13 +479,12 @@ impl CPU {
                 match res {
                     (_, true) => {
                         self.registers.set_register(0xF, 1);
-                    },
+                    }
                     (_, false) => {
                         self.registers.set_register(0xF, 0);
                     }
                 }
                 self.registers.set_register(x, res.0);
-
             }
             //9XY0
             Instruction::SkipNextInstructionIfXIsNotY { x, y } => {
@@ -476,7 +509,6 @@ impl CPU {
                 //this may fail when drawing out of bounds? maybe add a check for that
                 for sprite_row in 0..n {
                     let sprite = self.memory.bytes[sprite_start + sprite_row as usize];
-                    println!("{} xoring to screen: {:08b}", sprite_row, sprite);
                     //width is always 8
                     for sprite_column in 0..8 {
                         let x = x_coordinate + sprite_column;
@@ -491,45 +523,38 @@ impl CPU {
             Instruction::SetDelayTimerToX { x } => {
                 self.registers.delay_timer = self.registers.get_register(x);
             }
+            //fx1E
+            Instruction::AddXtoI { x } => {
+                let added = self.registers.get_index_register() + self.registers.get_register(x) as u16;
+                self.registers.set_index_register(added);
+            }
             Instruction::LoadBCDOfX { x } => {
-                let store_index = self.registers.get_index_register();
+                let store_index = self.registers.get_index_register() as usize;
                 let value_to_convert = self.registers.get_register(x);
-                
-                let str_representation:String = format!("{:0>3}",value_to_convert);//value_to_convert.to_string();
-                for (idx, value) in str_representation.chars().enumerate() {
-                    let valx = value.to_string().parse::<i32>().unwrap() as u8;
-                    println!("char: {}",valx);
-                    let tenth_power = (str_representation.len()-idx)-1;
-                    println!("10th power: {}",tenth_power);
-                    let rip = valx as u8 * (10u8.pow(tenth_power as u32));
-                    println!("value: {}",rip);//value.to_string().parse::<i32>().unwrap() * (10 ^(str_representation.len()-1 - idx)) as i32);
-                    self.memory.bytes[store_index as usize +idx] = rip as u8;
-                }
-
-                //panic!("Value to convert: {}",value_to_convert);
-                //println!("pew pew :D");
-            },
+                self.memory.bytes[store_index] = value_to_convert / 100;
+                self.memory.bytes[store_index+1] = (value_to_convert % 100)/10;
+                self.memory.bytes[store_index+2] = (value_to_convert % 100) % 10;
+            }
             //fx55
-            Instruction::Write0ThroughX {x } => {
+            Instruction::Write0ThroughX { x } => {
                 let start_storing_at = self.registers.get_index_register();
 
-                for register in 0..x+1 {
+                for register in 0..x + 1 {
                     let register_value = self.registers.get_register(register);
-                    self.memory.bytes[start_storing_at as usize + register as usize ] = register_value;    
+                    self.memory.bytes[start_storing_at as usize + register as usize] =
+                        register_value;
                 }
-            },
+            }
             //fx65
             Instruction::Load0ThroughX { x } => {
                 let idx = self.registers.get_index_register();
                 let value = self.memory.bytes[idx as usize];
-                for i in 0..x+1 {
-                    self.registers.set_register(i,self.memory.bytes[idx as usize + i as usize]);
+                for i in 0..x + 1 {
+                    self.registers
+                        .set_register(i, self.memory.bytes[idx as usize + i as usize]);
                 }
             }
 
-            //fx55
-            Instruction::Write0ThroughX { x } => {
-            }
         }
     }
     //returns the first 4 bits of the opcode as a byte
@@ -554,31 +579,13 @@ impl CPU {
         code & 0xfff
     }
 
-    ///Shows contents of the display, ██ for set pixels, and two spaces for unset ones
-    fn display(&self) {
-        //the special "clear screen" character for linux terminals
-        print!("{}[2J", 27 as char);
-        let mut output_buffer = "".to_string();
-        for row in 0..DISPLAY_HEIGHT {
-            for col in 0..DISPLAY_WIDTH {
-                let idx = row as usize * DISPLAY_WIDTH + col as usize;
-                output_buffer = format!("{}{}",output_buffer, if self.display[idx] { "██" } else { "  " });
-            }
-            output_buffer = format!("{}{}",output_buffer,"\n");
-        }
-        println!("{}",output_buffer);
-    }
-
     fn cycle(&mut self) {
-        //do this part 500 times a second
         let opcode = self.fetch(&self.memory);
 
         self.program_counter += 2;
 
         let instruction = self.decode(opcode);
         self.execute(instruction);
-        //do this part 60 times a second
-        self.display();
     }
 
     fn new(rom: RomBuffer) -> Self {
@@ -604,38 +611,70 @@ impl CPU {
 ///n is what's called a "nibble", it's 4 bits
 ///X and Y are registers
 enum Instruction {
-    JUMP { nnn: u16 }, //1nnn where nnn is a 12 bit value (lowest 12 bits of the instruction)
-    ClearScreen,       //clears the screen, does not take any arguments
+    NOOP { },                               //temporary instruction, used for development purposes
+    JUMP { nnn: u16 },                      //1nnn where nnn is a 12 bit value (lowest 12 bits of the instruction)
+    ClearScreen,                            //clears the screen, does not take any arguments
     AddToRegisterX { x: u8, kk: u8 },
+    AddXtoI { x: u8 },                      //set i = i + vx
     CallSubroutineAtNNN { nnn: u16 },
-    LoadRegisterX { x: u8, kk: u8 }, //6xkk puts the value kk into Vx
-    LoadXOrYinX { x: u8, y: u8 },    //8xy1
-    LoadXAndYInX { x: u8, y: u8 }, //8xy2
-    LoadXXorYInX { x: u8, y: u8 }, //8xy3
-    AddYToX {x: u8, y: u8 },//8xy4
-    SubYFromX {x: u8, y: u8 },//8xy5
-    ShiftXRight1 { x: u8 },//8xy6
-    ShiftXLeft1 { x: u8 },//8xyE
-    SubXFromY { x: u8, y: u8 },//8xy7
-    LoadRegisterXIntoY { x: u8, y: u8 }, //Stores the value of register Vy in register Vx
-    ReturnFromSubroutine, //pops the previous program_counter from the stack and makes it active
-    SetIndexRegister { nnn: u16 }, //ANNN set index register I to nnn
+    LoadRegisterX { x: u8, kk: u8 },        //6xkk puts the value kk into Vx
+    LoadXOrYinX { x: u8, y: u8 },           //8xy1
+    LoadXAndYInX { x: u8, y: u8 },          //8xy2
+    LoadXXorYInX { x: u8, y: u8 },          //8xy3
+    AddYToX { x: u8, y: u8 },               //8xy4
+    SubYFromX { x: u8, y: u8 },             //8xy5
+    ShiftXRight1 { x: u8 },                 //8xy6
+    ShiftXLeft1 { x: u8 },                  //8xyE
+    SubXFromY { x: u8, y: u8 },             //8xy7
+    LoadRegisterXIntoY { x: u8, y: u8 },    //Stores the value of register Vy in register Vx
+    ReturnFromSubroutine,                   //pops the previous program_counter from the stack and makes it active
+    SetIndexRegister { nnn: u16 },          //ANNN set index register I to nnn
     SkipNextInstructionIfXIsKK { x: u8, kk: u8 }, //skips the next instruction only if the register X holds the value kk
     SkipNextInstructionIfXIsNotKK { x: u8, kk: u8 }, //same as previous, except skips if register x does not hold value kk
     SkipNextInstructionIfXIsY { x: u8, y: u8 },
     SkipNextInstructionIfXIsNotY { x: u8, y: u8 },
-    DISPLAY { x: u8, y: u8, n: u8 }, //DXYN draws a sprite at coordinate from vx and vy, of width 8 and height n
-    SetDelayTimerToX { x: u8 },//Fx15
-    LoadBCDOfX { x: u8 },//fx33
-    Write0ThroughX { x: u8 }, //fx55
-    Load0ThroughX { x: u8 },//fx65
+    DISPLAY { x: u8, y: u8, n: u8 },        //DXYN draws a sprite at coordinate from vx and vy, of width 8 and height n
+    SetDelayTimerToX { x: u8 },             //Fx15
+    LoadBCDOfX { x: u8 },                   //fx33
+    Write0ThroughX { x: u8 },               //fx55
+    Load0ThroughX { x: u8 },                //fx65
 }
 
-fn main() {
-    let b = RomBuffer::new("./ibmlogo.ch8");
+fn main() -> Result<()> {
+    //creating a chip8 cpu object with a rom loaded
+    let b = RomBuffer::new("./testrom.ch8");
     let mut c = CPU::new(b);
 
+    //folowing code is all for setting up the tui library "ratatui"
+    stdout().execute(EnterAlternateScreen)?;
+    //disable input and output processing by terminal itself (and buffering i guess?)
+    enable_raw_mode()?;
+    //lets the TUI library interface with a terminal
+    let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
+    terminal.clear()?;
+    //ratatui main loop, runs 60 times per second
     loop {
-        c.cycle();
+        //the "cyles per frame" metric for out chip8 cpu
+        for _ in 0..=CYCLES_PER_FRAME {
+            c.cycle();
+        }
+        //draw the ui
+        terminal.draw(|frame| {
+            let area = frame.size();
+            frame.render_widget(c, area);
+        })?;
+        //handle input events
+        if event::poll(std::time::Duration::from_millis(16))? {
+            if let event::Event::Key(key) = event::read()? {
+                if key.kind == KeyEventKind::Press && key.code == KeyCode::Char('q')
+                    || key.code == KeyCode::Char('Q')
+                {
+                    break;
+                }
+            }
+        }
     }
+    stdout().execute(LeaveAlternateScreen)?;
+    disable_raw_mode()?;
+    Ok(())
 }
