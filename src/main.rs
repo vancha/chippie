@@ -423,35 +423,29 @@ impl CPU {
             }
             //8xy4
             Instruction::AddYToX { x, y } => {
-                let res =
-                    self.registers.get_register(x) as u16 + self.registers.get_register(y) as u16;
-                if res > 255 {
-                    self.registers.set_register(0xF, 1);
-                } else {
-                    self.registers.set_register(0xF, 0);
+                let res = self.registers.get_register(x).overflowing_add(self.registers.get_register(y));
+                self.registers.set_register(x, res.0);
+                match res.1 {
+                    true => {
+                        self.registers.set_register(0xF, 1);
+                    },
+                    false => {
+                        self.registers.set_register(0xF, 0);
+                    },
                 }
-
-                self.registers.set_register(
-                    x,
-                    (self.registers.get_register(x) as u16 + self.registers.get_register(y) as u16)
-                        as u8,
-                );
             }
             //8xy5
             Instruction::SubYFromX { x, y } => {
-                let vx = self.registers.get_register(x);
-                let vy = self.registers.get_register(y);
-                let res = vx.overflowing_sub(vy);
-
-                match res {
-                    (_, true) => {
+                let res = self.registers.get_register(x).overflowing_sub(self.registers.get_register(y));
+                self.registers.set_register(x, res.0);
+                match res.1 {
+                    true => {
                         self.registers.set_register(0xF, 0);
                     }
-                    (_, false) => {
+                    false => {
                         self.registers.set_register(0xF, 1);
                     }
                 }
-                self.registers.set_register(x, res.0);
             }
 
             //8xy6
@@ -469,19 +463,16 @@ impl CPU {
             }
             //8xy7
             Instruction::SubXFromY { x, y } => {
-                let vx = self.registers.get_register(x);
-                let vy = self.registers.get_register(y);
-                let res = vy.overflowing_sub(vx);
-
-                match res {
-                    (_, true) => {
-                        self.registers.set_register(0xF, 1);
-                    }
-                    (_, false) => {
+                let res = self.registers.get_register(y).overflowing_sub(self.registers.get_register(x));
+                self.registers.set_register(x, res.0);
+                match res.1 {
+                    true => {
                         self.registers.set_register(0xF, 0);
                     }
+                    false => {
+                        self.registers.set_register(0xF, 1);
+                    }
                 }
-                self.registers.set_register(x, res.0);
             }
             //9XY0
             Instruction::SkipNextInstructionIfXIsNotY { x, y } => {
