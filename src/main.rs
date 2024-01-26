@@ -454,9 +454,16 @@ impl CPU {
 
             //8xy6
             Instruction::ShiftXRight1 { x } => {
-                let vx = self.registers.get_register(x);
-                self.registers.set_register(0xF, vx & 0b1);
-                self.registers.set_register(x, vx >> 1);
+                let res = self.registers.get_register(x).overflowing_shr(1);
+                self.registers.set_register(x, res.0);
+                match res.1 {
+                    true => {
+                        self.registers.set_register(0xF, 1);
+                    }
+                    false => {
+                        self.registers.set_register(0xF, 0);
+                    }
+                }
             }
 
             //8xyE
