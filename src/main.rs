@@ -3,9 +3,8 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
 };
-use ratatui::prelude::Color;
 use ratatui::{
-    prelude::{Buffer, CrosstermBackend, Rect, Style, Terminal},
+    prelude::{Buffer, CrosstermBackend, Rect, Terminal},
     widgets::Widget,
 };
 use std::io::{stdout, Result};
@@ -202,7 +201,7 @@ struct CPU {
     stackpointer: u8, //only contains indexes to locations in the stack, so 0 through 15
 }
 
-//adds the option to draw the display of the cpu
+//ratatui's 'widget' trait, to draw the display :)
 impl Widget for CPU {
     fn render(self, _area: Rect, buf: &mut Buffer) {
         for row in 0..DISPLAY_HEIGHT {
@@ -210,7 +209,7 @@ impl Widget for CPU {
                 let idx = row as usize * DISPLAY_WIDTH + col as usize;
                 buf.get_mut(col as u16, row as u16)
                     .set_char(match self.display[idx] {
-                        true => '█', //row.to_string().chars().into_iter().nth(0).unwrap(),
+                        true => '█',
                         false => ' ',
                     });
             }
@@ -421,11 +420,11 @@ impl CPU {
             }
             //8xy4
             Instruction::AddYToX { x, y } => {
-                let res = self
-                    .registers
-                    .get_register(x)
-                    .overflowing_add(self.registers.get_register(y));
+                let vx = self.registers.get_register(x);
+                let vy = self.registers.get_register(y);
+                let res = vy.overflowing_add(vx);
                 self.registers.set_register(x, res.0);
+
                 match res.1 {
                     true => {
                         self.registers.set_register(0xF, 1);
@@ -472,10 +471,10 @@ impl CPU {
                 self.registers.set_register(x, res.0);
                 match res.1 {
                     true => {
-                        self.registers.set_register(0xF, 0);
+                        self.registers.set_register(0xF, 1);
                     }
                     false => {
-                        self.registers.set_register(0xF, 1);
+                        self.registers.set_register(0xF, 0);
                     }
                 }
             }
@@ -559,7 +558,6 @@ impl CPU {
             //fx65
             Instruction::Load0ThroughX { x } => {
                 let idx = self.registers.get_index_register();
-                let value = self.memory.bytes[idx as usize];
                 for i in 0..x + 1 {
                     self.registers
                         .set_register(i, self.memory.bytes[idx as usize + i as usize]);
