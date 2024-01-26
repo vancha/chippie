@@ -210,7 +210,7 @@ impl Widget for CPU {
                 let idx = row as usize * DISPLAY_WIDTH + col as usize;
                 buf.get_mut(col as u16, row as u16)
                     .set_char(match self.display[idx] {
-                        true => '█',//row.to_string().chars().into_iter().nth(0).unwrap(),
+                        true => '█', //row.to_string().chars().into_iter().nth(0).unwrap(),
                         false => ' ',
                     });
             }
@@ -226,9 +226,7 @@ impl CPU {
         match self.first_nibble(opcode) {
             0x00 => match self.last_byte(opcode) {
                 0xE0 => Instruction::ClearScreen,
-                0xEE => {
-                    Instruction::ReturnFromSubroutine
-                }
+                0xEE => Instruction::ReturnFromSubroutine,
                 _ => panic!("what's going on {:#06x}", opcode),
             },
             0x1 => Instruction::JUMP {
@@ -328,7 +326,7 @@ impl CPU {
                 },
                 _ => {
                     print!("0xf, also unimplemented: {:0x}", opcode);
-                    return Instruction::NOOP { };
+                    return Instruction::NOOP {};
                 }
             },
             _ => {
@@ -340,7 +338,7 @@ impl CPU {
     ///definition
     fn execute(&mut self, instruction: Instruction) {
         match instruction {
-            Instruction::NOOP { }=> {
+            Instruction::NOOP {} => {
                 println!("hi");
                 //println!("nooping");
             }
@@ -423,20 +421,26 @@ impl CPU {
             }
             //8xy4
             Instruction::AddYToX { x, y } => {
-                let res = self.registers.get_register(x).overflowing_add(self.registers.get_register(y));
+                let res = self
+                    .registers
+                    .get_register(x)
+                    .overflowing_add(self.registers.get_register(y));
                 self.registers.set_register(x, res.0);
                 match res.1 {
                     true => {
                         self.registers.set_register(0xF, 1);
-                    },
+                    }
                     false => {
                         self.registers.set_register(0xF, 0);
-                    },
+                    }
                 }
             }
             //8xy5
             Instruction::SubYFromX { x, y } => {
-                let res = self.registers.get_register(x).overflowing_sub(self.registers.get_register(y));
+                let res = self
+                    .registers
+                    .get_register(x)
+                    .overflowing_sub(self.registers.get_register(y));
                 self.registers.set_register(x, res.0);
                 match res.1 {
                     true => {
@@ -457,13 +461,24 @@ impl CPU {
 
             //8xyE
             Instruction::ShiftXLeft1 { x } => {
-                let vx = self.registers.get_register(x);
-                self.registers.set_register(0xF, vx << 7 & 0b1);
-                self.registers.set_register(x, vx << 1);
+                let res = self.registers.get_register(x).overflowing_shl(1);
+                self.registers.set_register(x, res.0);
+                match res.1 {
+                    true => {
+                        self.registers.set_register(0xF, 0);
+                    }
+                    false => {
+                        self.registers.set_register(0xF, 1);
+                    }
+                }
             }
+
             //8xy7
             Instruction::SubXFromY { x, y } => {
-                let res = self.registers.get_register(y).overflowing_sub(self.registers.get_register(x));
+                let res = self
+                    .registers
+                    .get_register(y)
+                    .overflowing_sub(self.registers.get_register(x));
                 self.registers.set_register(x, res.0);
                 match res.1 {
                     true => {
@@ -513,15 +528,16 @@ impl CPU {
             }
             //fx1E
             Instruction::AddXtoI { x } => {
-                let added = self.registers.get_index_register() + self.registers.get_register(x) as u16;
+                let added =
+                    self.registers.get_index_register() + self.registers.get_register(x) as u16;
                 self.registers.set_index_register(added);
             }
             Instruction::LoadBCDOfX { x } => {
                 let store_index = self.registers.get_index_register() as usize;
                 let value_to_convert = self.registers.get_register(x);
                 self.memory.bytes[store_index] = value_to_convert / 100;
-                self.memory.bytes[store_index+1] = (value_to_convert % 100)/10;
-                self.memory.bytes[store_index+2] = (value_to_convert % 100) % 10;
+                self.memory.bytes[store_index + 1] = (value_to_convert % 100) / 10;
+                self.memory.bytes[store_index + 2] = (value_to_convert % 100) % 10;
             }
             //fx55
             Instruction::Write0ThroughX { x } => {
@@ -542,7 +558,6 @@ impl CPU {
                         .set_register(i, self.memory.bytes[idx as usize + i as usize]);
                 }
             }
-
         }
     }
     //returns the first 4 bits of the opcode as a byte
@@ -599,33 +614,33 @@ impl CPU {
 ///n is what's called a "nibble", it's 4 bits
 ///X and Y are registers
 enum Instruction {
-    NOOP { },                               //temporary instruction, used for development purposes
-    JUMP { nnn: u16 },                      //1nnn where nnn is a 12 bit value (lowest 12 bits of the instruction)
-    ClearScreen,                            //clears the screen, does not take any arguments
+    NOOP {},           //temporary instruction, used for development purposes
+    JUMP { nnn: u16 }, //1nnn where nnn is a 12 bit value (lowest 12 bits of the instruction)
+    ClearScreen,       //clears the screen, does not take any arguments
     AddToRegisterX { x: u8, kk: u8 },
-    AddXtoI { x: u8 },                      //set i = i + vx
+    AddXtoI { x: u8 }, //set i = i + vx
     CallSubroutineAtNNN { nnn: u16 },
-    LoadRegisterX { x: u8, kk: u8 },        //6xkk puts the value kk into Vx
-    LoadXOrYinX { x: u8, y: u8 },           //8xy1
-    LoadXAndYInX { x: u8, y: u8 },          //8xy2
-    LoadXXorYInX { x: u8, y: u8 },          //8xy3
-    AddYToX { x: u8, y: u8 },               //8xy4
-    SubYFromX { x: u8, y: u8 },             //8xy5
-    ShiftXRight1 { x: u8 },                 //8xy6
-    ShiftXLeft1 { x: u8 },                  //8xyE
-    SubXFromY { x: u8, y: u8 },             //8xy7
-    LoadRegisterXIntoY { x: u8, y: u8 },    //Stores the value of register Vy in register Vx
-    ReturnFromSubroutine,                   //pops the previous program_counter from the stack and makes it active
-    SetIndexRegister { nnn: u16 },          //ANNN set index register I to nnn
+    LoadRegisterX { x: u8, kk: u8 }, //6xkk puts the value kk into Vx
+    LoadXOrYinX { x: u8, y: u8 },    //8xy1
+    LoadXAndYInX { x: u8, y: u8 },   //8xy2
+    LoadXXorYInX { x: u8, y: u8 },   //8xy3
+    AddYToX { x: u8, y: u8 },        //8xy4
+    SubYFromX { x: u8, y: u8 },      //8xy5
+    ShiftXRight1 { x: u8 },          //8xy6
+    ShiftXLeft1 { x: u8 },           //8xyE
+    SubXFromY { x: u8, y: u8 },      //8xy7
+    LoadRegisterXIntoY { x: u8, y: u8 }, //Stores the value of register Vy in register Vx
+    ReturnFromSubroutine, //pops the previous program_counter from the stack and makes it active
+    SetIndexRegister { nnn: u16 }, //ANNN set index register I to nnn
     SkipNextInstructionIfXIsKK { x: u8, kk: u8 }, //skips the next instruction only if the register X holds the value kk
     SkipNextInstructionIfXIsNotKK { x: u8, kk: u8 }, //same as previous, except skips if register x does not hold value kk
     SkipNextInstructionIfXIsY { x: u8, y: u8 },
     SkipNextInstructionIfXIsNotY { x: u8, y: u8 },
-    DISPLAY { x: u8, y: u8, n: u8 },        //DXYN draws a sprite at coordinate from vx and vy, of width 8 and height n
-    SetDelayTimerToX { x: u8 },             //Fx15
-    LoadBCDOfX { x: u8 },                   //fx33
-    Write0ThroughX { x: u8 },               //fx55
-    Load0ThroughX { x: u8 },                //fx65
+    DISPLAY { x: u8, y: u8, n: u8 }, //DXYN draws a sprite at coordinate from vx and vy, of width 8 and height n
+    SetDelayTimerToX { x: u8 },      //Fx15
+    LoadBCDOfX { x: u8 },            //fx33
+    Write0ThroughX { x: u8 },        //fx55
+    Load0ThroughX { x: u8 },         //fx65
 }
 
 fn main() -> Result<()> {
