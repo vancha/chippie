@@ -338,8 +338,7 @@ impl CPU {
     fn execute(&mut self, instruction: Instruction) {
         match instruction {
             Instruction::NOOP {} => {
-                println!("hi");
-                //println!("nooping");
+                println!("nooping");
             }
             //00E0
             Instruction::ClearScreen => {
@@ -347,8 +346,8 @@ impl CPU {
             }
             //00EE
             Instruction::ReturnFromSubroutine => {
-                self.program_counter = self.stack.values[self.stackpointer as usize];
                 self.stackpointer -= 1;
+                self.program_counter = self.stack.values[self.stackpointer as usize];
             }
             //1NNN
             Instruction::JUMP { nnn } => {
@@ -356,8 +355,8 @@ impl CPU {
             }
             //2NNN
             Instruction::CallSubroutineAtNNN { nnn } => {
-                self.stackpointer += 1;
                 self.stack.values[self.stackpointer as usize] = self.program_counter;
+                self.stackpointer += 1;
                 self.program_counter = nnn;
             }
             //3XKK
