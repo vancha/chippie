@@ -430,13 +430,12 @@ impl CPU {
 
             //8xy5
             Instruction::SubYFromX { x, y } => {
-                let vx = self.registers.get_register(x);
-                let vy = self.registers.get_register(y);
-                
-                let vf = if vx > vy { 1 } else { 0 };
-
-                self.registers.set_register(x, vx.wrapping_sub(vy) );
-                self.registers.set_register(0xF, vf );
+                let (res,fv) = self
+                    .registers
+                    .get_register(x)
+                    .overflowing_sub(self.registers.get_register(y));
+                self.registers.set_register(x, res);
+                self.registers.set_register(0xf, if fv { 0 } else { 1 });
             }
 
             //8xy6
