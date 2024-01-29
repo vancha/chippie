@@ -350,7 +350,7 @@ impl CPU {
                 self.program_counter = self.stack.values[self.stackpointer as usize];
                 self.stackpointer -= 1;
             }
-            //0NNN
+            //1NNN
             Instruction::JUMP { nnn } => {
                 self.program_counter = nnn;
             }
