@@ -8,6 +8,8 @@ use ratatui::{
     widgets::Widget,
 };
 use std::io::{stdout, Result};
+use rand::Rng;
+
 
 const DISPLAY_WIDTH: usize = 64;
 const DISPLAY_HEIGHT: usize = 32;
@@ -69,6 +71,7 @@ struct Registers {
 
     vindex: u16,
     delay_timer: u8,
+    sound_timer: u8,
 }
 
 impl Registers {
@@ -90,8 +93,10 @@ impl Registers {
             vd: 0,
             ve: 0,
             vf: 0,
+
             vindex: 0,
             delay_timer: 0,
+            sound_timer: 0,
         }
     }
     fn set_index_register(&mut self, value: u16) {
@@ -100,6 +105,26 @@ impl Registers {
     fn get_index_register(&self) -> u16 {
         self.vindex
     }
+    fn set_sound_timer(&mut self, value: u8) {
+        self.sound_timer = value;
+    }
+    fn set_delay_timer(&mut self, value: u8) {
+        self.delay_timer = value;
+    }
+    fn get_delay_timer(&self) -> u8 {
+        return self.delay_timer;
+    }
+    fn decrement_sound_timer(&mut self) {
+        if self.sound_timer > 0 {
+            self.sound_timer -= 1;
+        }
+    }
+    fn decrement_delay_timer(&mut self) {
+       if self.delay_timer > 0 {
+            self.delay_timer -= 1;
+       }
+    }
+
     fn get_register(&self, register: u8) -> u8 {
         match register {
             0 => self.v0,
@@ -302,16 +327,29 @@ impl CPU {
             0xA => Instruction::SetIndexRegister {
                 nnn: self.oxxx(opcode),
             },
+            0xC => Instruction::SetXToRandom {
+                x: self.second_nibble(opcode),
+                kk: self.last_byte(opcode),
+            },
             0xD => Instruction::DISPLAY {
                 x: self.second_nibble(opcode),
                 y: self.third_nibble(opcode),
                 n: self.fourth_nibble(opcode),
             },
             0xF => match self.last_byte(opcode) {
+                0x07 => Instruction::SetXToDelayTimer {
+                    x: self.second_nibble(opcode),
+                },
                 0x15 => Instruction::SetDelayTimerToX {
                     x: self.second_nibble(opcode),
                 },
+                0x18 => Instruction::SetSoundTimerToX {
+                    x: self.second_nibble(opcode),
+                },
                 0x1E => Instruction::AddXtoI {
+                    x: self.second_nibble(opcode),
+                },
+                0x29 => Instruction::SetIToSpriteX {
                     x: self.second_nibble(opcode),
                 },
                 0x33 => Instruction::LoadBCDOfX {
@@ -410,19 +448,13 @@ impl CPU {
                 let vx = self.registers.get_register(x);
                 let vy = self.registers.get_register(y);
 
-                self.registers.set_register(
-                    x,
-                    vx & vy
-                );
+                self.registers.set_register(x, vx & vy);
             }
             //8xy3
             Instruction::LoadXXorYInX { x, y } => {
                 let vx = self.registers.get_register(x);
                 let vy = self.registers.get_register(y);
-                self.registers.set_register(
-                    x,
-                    vx ^ vy
-                );
+                self.registers.set_register(x, vx ^ vy);
             }
             //8xy4
             Instruction::AddYToX { x, y } => {
@@ -484,6 +516,12 @@ impl CPU {
             Instruction::SetIndexRegister { nnn } => {
                 self.registers.set_index_register(nnn);
             }
+            //cxkk
+            Instruction::SetXToRandom { x, kk } => {
+                let mut rng = rand::thread_rng();
+                let random_number = rng.gen_range(0..=255);
+                self.registers.set_register(x, random_number & kk);
+            }
             //DXYN
             Instruction::DISPLAY { x, y, n } => {
                 let x_coordinate = self.registers.get_register(x) % DISPLAY_WIDTH as u8;
@@ -510,10 +548,21 @@ impl CPU {
                     }
                 }
             }
+            //fx07
+            Instruction::SetXToDelayTimer { x } => {
+                let vdt = self.registers.get_delay_timer();
+                self.registers.set_register(x, vdt);
+            }
+
             //fx15
             Instruction::SetDelayTimerToX { x } => {
                 let vx = self.registers.get_register(x);
                 self.registers.delay_timer = vx;
+            }
+
+            Instruction::SetSoundTimerToX { x } => {
+                let vx = self.registers.get_register(x);
+                self.registers.set_sound_timer(vx);
             }
             //fx1E
             Instruction::AddXtoI { x } => {
@@ -522,6 +571,10 @@ impl CPU {
                 let added = vi + vx;
 
                 self.registers.set_index_register(added);
+            }
+            //fx29
+            Instruction::SetIToSpriteX { x } => {
+                let vx = self.registers.get_register(x);
             }
             Instruction::LoadBCDOfX { x } => {
                 let vx = self.registers.get_register(x);
@@ -534,20 +587,17 @@ impl CPU {
             Instruction::Write0ThroughX { x } => {
                 let vi = self.registers.get_index_register() as usize;
 
-                //let start_storing_at = self.registers.get_index_register();
-
                 for register in 0..x + 1 {
                     let register_value = self.registers.get_register(register);
-                    self.memory.bytes[vi + register as usize] =
-                        register_value;
+                    self.memory.bytes[vi + register as usize] = register_value;
                 }
             }
             //fx65
             Instruction::Load0ThroughX { x } => {
-                let vi = self.registers.get_index_register();
+                let vi = self.registers.get_index_register() as usize;
                 for i in 0..x + 1 {
                     self.registers
-                        .set_register(i, self.memory.bytes[vi as usize + i as usize]);
+                        .set_register(i, self.memory.bytes[vi + i as usize]);
                 }
             }
         }
@@ -580,7 +630,11 @@ impl CPU {
         self.program_counter += 2;
 
         let instruction = self.decode(opcode);
+        
         self.execute(instruction);
+        
+        self.registers.decrement_sound_timer();
+        self.registers.decrement_delay_timer();
     }
 
     fn new(rom: RomBuffer) -> Self {
@@ -610,7 +664,6 @@ enum Instruction {
     JUMP { nnn: u16 }, //1nnn where nnn is a 12 bit value (lowest 12 bits of the instruction)
     ClearScreen,       //clears the screen, does not take any arguments
     AddToRegisterX { x: u8, kk: u8 },
-    AddXtoI { x: u8 }, //set i = i + vx
     CallSubroutineAtNNN { nnn: u16 },
     LoadRegisterX { x: u8, kk: u8 }, //6xkk puts the value kk into Vx
     LoadXOrYinX { x: u8, y: u8 },    //8xy1
@@ -628,8 +681,14 @@ enum Instruction {
     SkipNextInstructionIfXIsNotKK { x: u8, kk: u8 }, //same as previous, except skips if register x does not hold value kk
     SkipNextInstructionIfXIsY { x: u8, y: u8 },
     SkipNextInstructionIfXIsNotY { x: u8, y: u8 },
+    SetXToRandom { x: u8, kk: u8 },  //cxkk
     DISPLAY { x: u8, y: u8, n: u8 }, //DXYN draws a sprite at coordinate from vx and vy, of width 8 and height n
+    SkipIfVxPressed { x: u8 },       //exa1
+    SetXToDelayTimer { x: u8 },      //fx07
     SetDelayTimerToX { x: u8 },      //Fx15
+    SetSoundTimerToX { x: u8 },      //fx18
+    AddXtoI { x: u8 },               //fx1e
+    SetIToSpriteX { x: u8 },         //fx29
     LoadBCDOfX { x: u8 },            //fx33
     Write0ThroughX { x: u8 },        //fx55
     Load0ThroughX { x: u8 },         //fx65
@@ -637,7 +696,7 @@ enum Instruction {
 
 fn main() -> Result<()> {
     //creating a chip8 cpu object with a rom loaded
-    let b = RomBuffer::new("./flagstest.ch8");
+    let b = RomBuffer::new("./pong.ch8");
     let mut c = CPU::new(b);
 
     //folowing code is all for setting up the tui library "ratatui"
