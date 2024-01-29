@@ -192,7 +192,7 @@ impl Stack {
 
 #[derive(Clone, Copy)]
 struct CPU {
-    display: [bool; DISPLAY_WIDTH * DISPLAY_HEIGHT],
+    display: [bool; DISPLAY_WIDTH * DISPLAY_HEIGHT], 
     ///Program counter, used to keep track of what to fetch,decode and execute from ram, initialized at 0x200
     program_counter: u16,
     memory: RAM,
@@ -495,7 +495,7 @@ impl CPU {
                         let y = y_coordinate + sprite_row;
                         let display_index = x as usize + DISPLAY_WIDTH * y as usize;
                         let value = sprite >> (7 - sprite_column) & 1 == 1;
-                        self.display[display_index] = value;
+                        self.display[display_index] ^= value;
                     }
                 }
             }
