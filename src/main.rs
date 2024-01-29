@@ -422,79 +422,51 @@ impl CPU {
             Instruction::AddYToX { x, y } => {
                 let vx = self.registers.get_register(x);
                 let vy = self.registers.get_register(y);
-                let res = vy.overflowing_add(vx);
-                self.registers.set_register(x, res.0);
 
-                match res.1 {
-                    true => {
-                        self.registers.set_register(0xF, 1);
-                    }
-                    false => {
-                        self.registers.set_register(0xF, 0);
-                    }
-                }
+                let (res,fv) = vy.overflowing_add(vx);
+                self.registers.set_register(x, res);
+                self.registers.set_register(0xf,if fv { 1 } else { 0 });
             }
+
             //8xy5
             Instruction::SubYFromX { x, y } => {
-                let res = self
-                    .registers
-                    .get_register(x)
-                    .overflowing_sub(self.registers.get_register(y));
-                self.registers.set_register(x, res.0);
-                match res.1 {
-                    true => {
-                        self.registers.set_register(0xF, 0);
-                    }
-                    false => {
-                        self.registers.set_register(0xF, 1);
-                    }
-                }
+                let vx = self.registers.get_register(x);
+                let vy = self.registers.get_register(y);
+                
+                let vf = if vx > vy { 1 } else { 0 };
+
+                self.registers.set_register(x, vx.wrapping_sub(vy) );
+                self.registers.set_register(0xF, vf );
             }
 
             //8xy6
             Instruction::ShiftXRight1 { x } => {
-                let res = self.registers.get_register(x).overflowing_shr(1);
-                self.registers.set_register(x, res.0);
-                match res.1 {
-                    true => {
-                        self.registers.set_register(0xF, 1);
-                    }
-                    false => {
-                        self.registers.set_register(0xF, 0);
-                    }
-                }
+                let vx = self.registers.get_register(x);
+                let vf = if vx & 1  == 1 { 1 } else { 0 };
+
+                self.registers.set_register(x, vx.overflowing_shr(1).0);
+                self.registers.set_register(0xF, vf);
             }
 
             //8xyE
             Instruction::ShiftXLeft1 { x } => {
-                let res = self.registers.get_register(x).overflowing_shl(1);
-                self.registers.set_register(x, res.0);
-                match res.1 {
-                    true => {
-                        self.registers.set_register(0xF, 1);
-                    }
-                    false => {
-                        self.registers.set_register(0xF, 0);
-                    }
-                }
+                let vx = self.registers.get_register(x);
+                let fv = (vx as u16 >> 7) & 1;
+                let res = self.registers.get_register(x).wrapping_shl(1);
+                
+                self.registers.set_register(x,res);
+                self.registers.set_register(0xf, if fv == 1 { 1 } else { 0 });
             }
-
             //8xy7
             Instruction::SubXFromY { x, y } => {
-                let res = self
+                let (res,fv) = self
                     .registers
                     .get_register(y)
                     .overflowing_sub(self.registers.get_register(x));
-                self.registers.set_register(x, res.0);
-                match res.1 {
-                    true => {
-                        self.registers.set_register(0xF, 0);
-                    }
-                    false => {
-                        self.registers.set_register(0xF, 1);
-                    }
-                }
+                self.registers.set_register(x, res);
+                self.registers.set_register(0xf, if fv { 0 } else { 1 });
             }
+            
             //9XY0
             Instruction::SkipNextInstructionIfXIsNotY { x, y } => {
                 if self.registers.get_register(x) != self.registers.get_register(y) {
