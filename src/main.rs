@@ -192,7 +192,7 @@ impl Stack {
 
 #[derive(Clone, Copy)]
 struct CPU {
-    display: [bool; DISPLAY_WIDTH * DISPLAY_HEIGHT], 
+    display: [bool; DISPLAY_WIDTH * DISPLAY_HEIGHT],
     ///Program counter, used to keep track of what to fetch,decode and execute from ram, initialized at 0x200
     program_counter: u16,
     memory: RAM,
@@ -361,19 +361,25 @@ impl CPU {
             }
             //3XKK
             Instruction::SkipNextInstructionIfXIsKK { x, kk } => {
-                if self.registers.get_register(x) == kk {
+                let vx = self.registers.get_register(x);
+                if vx == kk {
                     self.program_counter += 2;
                 }
             }
             //4XKK
             Instruction::SkipNextInstructionIfXIsNotKK { x, kk } => {
-                if self.registers.get_register(x) != kk {
+                let vx = self.registers.get_register(x);
+
+                if vx != kk {
                     self.program_counter += 2;
                 }
             }
             //5XY0
             Instruction::SkipNextInstructionIfXIsY { x, y } => {
-                if self.registers.get_register(x) == self.registers.get_register(y) {
+                let vx = self.registers.get_register(x);
+                let vy = self.registers.get_register(y);
+
+                if vx == vy {
                     self.program_counter += 2;
                 }
             }
@@ -383,38 +389,39 @@ impl CPU {
             }
             //7XKK
             Instruction::AddToRegisterX { x, kk } => {
-                let tmp = self.registers.get_register(x) as u16 + kk as u16;
-                //this can happen, if it does, the result is made to fit in a u8 again
-                match tmp >= 255 {
-                    _ => {
-                        self.registers.set_register(x, tmp as u8);
-                    }
-                }
+                let vx = self.registers.get_register(x);
+
+                let (tmp, overflow) = vx.overflowing_add(kk); // as u16 + kk as u16;
+                self.registers.set_register(x, tmp);
             }
             //8xy0
             Instruction::LoadRegisterXIntoY { x, y } => {
-                self.registers
-                    .set_register(x, self.registers.get_register(y));
+                let vy = self.registers.get_register(y);
+                self.registers.set_register(x, vy);
             }
             //8xy1
             Instruction::LoadXOrYinX { x, y } => {
-                self.registers.set_register(
-                    x,
-                    self.registers.get_register(x) | self.registers.get_register(y),
-                );
+                let vx = self.registers.get_register(x);
+                let vy = self.registers.get_register(y);
+                self.registers.set_register(x, vx | vy);
             }
             //8xy2
             Instruction::LoadXAndYInX { x, y } => {
+                let vx = self.registers.get_register(x);
+                let vy = self.registers.get_register(y);
+
                 self.registers.set_register(
                     x,
-                    self.registers.get_register(x) & self.registers.get_register(y),
+                    vx & vy
                 );
             }
             //8xy3
             Instruction::LoadXXorYInX { x, y } => {
+                let vx = self.registers.get_register(x);
+                let vy = self.registers.get_register(y);
                 self.registers.set_register(
                     x,
-                    self.registers.get_register(x) ^ self.registers.get_register(y),
+                    vx ^ vy
                 );
             }
             //8xy4
@@ -422,17 +429,17 @@ impl CPU {
                 let vx = self.registers.get_register(x);
                 let vy = self.registers.get_register(y);
 
-                let (res,fv) = vy.overflowing_add(vx);
+                let (res, fv) = vy.overflowing_add(vx);
                 self.registers.set_register(x, res);
-                self.registers.set_register(0xf,if fv { 1 } else { 0 });
+                self.registers.set_register(0xf, if fv { 1 } else { 0 });
             }
 
             //8xy5
             Instruction::SubYFromX { x, y } => {
-                let (res,fv) = self
-                    .registers
-                    .get_register(x)
-                    .overflowing_sub(self.registers.get_register(y));
+                let vx = self.registers.get_register(x);
+                let vy = self.registers.get_register(y);
+
+                let (res, fv) = vx.overflowing_sub(vy);
                 self.registers.set_register(x, res);
                 self.registers.set_register(0xf, if fv { 0 } else { 1 });
             }
@@ -440,7 +447,7 @@ impl CPU {
             //8xy6
             Instruction::ShiftXRight1 { x } => {
                 let vx = self.registers.get_register(x);
-                let vf = if vx & 1  == 1 { 1 } else { 0 };
+                let vf = if vx & 1 == 1 { 1 } else { 0 };
 
                 self.registers.set_register(x, vx.overflowing_shr(1).0);
                 self.registers.set_register(0xF, vf);
@@ -451,23 +458,25 @@ impl CPU {
                 let vx = self.registers.get_register(x);
                 let fv = (vx as u16 >> 7) & 1;
                 let res = self.registers.get_register(x).wrapping_shl(1);
-                
-                self.registers.set_register(x,res);
-                self.registers.set_register(0xf, if fv == 1 { 1 } else { 0 });
+
+                self.registers.set_register(x, res);
+                self.registers
+                    .set_register(0xf, if fv == 1 { 1 } else { 0 });
             }
             //8xy7
             Instruction::SubXFromY { x, y } => {
-                let (res,fv) = self
-                    .registers
-                    .get_register(y)
-                    .overflowing_sub(self.registers.get_register(x));
+                let vx = self.registers.get_register(x);
+                let vy = self.registers.get_register(y);
+                let (res, fv) = vy.overflowing_sub(vx);
                 self.registers.set_register(x, res);
                 self.registers.set_register(0xf, if fv { 0 } else { 1 });
             }
-            
+
             //9XY0
             Instruction::SkipNextInstructionIfXIsNotY { x, y } => {
-                if self.registers.get_register(x) != self.registers.get_register(y) {
+                let vx = self.registers.get_register(x);
+                let vy = self.registers.get_register(y);
+                if vx != vy {
                     self.program_counter += 2;
                 }
             }
@@ -494,43 +503,51 @@ impl CPU {
                         let y = y_coordinate + sprite_row;
                         let display_index = x as usize + DISPLAY_WIDTH * y as usize;
                         let value = sprite >> (7 - sprite_column) & 1 == 1;
+                        if self.display[display_index] && value {
+                            self.registers.set_register(0xf, 1);
+                        }
                         self.display[display_index] ^= value;
                     }
                 }
             }
             //fx15
             Instruction::SetDelayTimerToX { x } => {
-                self.registers.delay_timer = self.registers.get_register(x);
+                let vx = self.registers.get_register(x);
+                self.registers.delay_timer = vx;
             }
             //fx1E
             Instruction::AddXtoI { x } => {
-                let added =
-                    self.registers.get_index_register() + self.registers.get_register(x) as u16;
+                let vx = self.registers.get_register(x) as u16;
+                let vi = self.registers.get_index_register();
+                let added = vi + vx;
+
                 self.registers.set_index_register(added);
             }
             Instruction::LoadBCDOfX { x } => {
+                let vx = self.registers.get_register(x);
                 let store_index = self.registers.get_index_register() as usize;
-                let value_to_convert = self.registers.get_register(x);
-                self.memory.bytes[store_index] = value_to_convert / 100;
-                self.memory.bytes[store_index + 1] = (value_to_convert % 100) / 10;
-                self.memory.bytes[store_index + 2] = (value_to_convert % 100) % 10;
+                self.memory.bytes[store_index] = vx / 100;
+                self.memory.bytes[store_index + 1] = (vx % 100) / 10;
+                self.memory.bytes[store_index + 2] = (vx % 100) % 10;
             }
             //fx55
             Instruction::Write0ThroughX { x } => {
-                let start_storing_at = self.registers.get_index_register();
+                let vi = self.registers.get_index_register() as usize;
+
+                //let start_storing_at = self.registers.get_index_register();
 
                 for register in 0..x + 1 {
                     let register_value = self.registers.get_register(register);
-                    self.memory.bytes[start_storing_at as usize + register as usize] =
+                    self.memory.bytes[vi + register as usize] =
                         register_value;
                 }
             }
             //fx65
             Instruction::Load0ThroughX { x } => {
-                let idx = self.registers.get_index_register();
+                let vi = self.registers.get_index_register();
                 for i in 0..x + 1 {
                     self.registers
-                        .set_register(i, self.memory.bytes[idx as usize + i as usize]);
+                        .set_register(i, self.memory.bytes[vi as usize + i as usize]);
                 }
             }
         }
