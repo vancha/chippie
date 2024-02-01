@@ -3,13 +3,12 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
 };
+use rand::Rng;
 use ratatui::{
     prelude::{Buffer, CrosstermBackend, Rect, Terminal},
     widgets::Widget,
 };
 use std::io::{stdout, Result};
-use rand::Rng;
-
 
 const DISPLAY_WIDTH: usize = 64;
 const DISPLAY_HEIGHT: usize = 32;
@@ -35,8 +34,7 @@ impl RAM {
     }
     ///returns a value from ram
     fn get(self, index: u16) -> u16 {
-        return ((self.bytes[index as usize] as u16) << 8)
-            | self.bytes[(index + 1) as usize] as u16;
+        ((self.bytes[index as usize] as u16) << 8) | self.bytes[(index + 1) as usize] as u16
     }
 }
 
@@ -120,9 +118,9 @@ impl Registers {
         }
     }
     fn decrement_delay_timer(&mut self) {
-       if self.delay_timer > 0 {
+        if self.delay_timer > 0 {
             self.delay_timer -= 1;
-       }
+        }
     }
 
     fn get_register(&self, register: u8) -> u8 {
@@ -217,7 +215,7 @@ impl Stack {
 
 #[derive(Clone, Copy)]
 struct CPU {
-    display: [bool; DISPLAY_WIDTH * DISPLAY_HEIGHT],
+    display: [[bool; DISPLAY_WIDTH]; DISPLAY_HEIGHT],
     ///Program counter, used to keep track of what to fetch,decode and execute from ram, initialized at 0x200
     program_counter: u16,
     memory: RAM,
@@ -231,9 +229,8 @@ impl Widget for CPU {
     fn render(self, _area: Rect, buf: &mut Buffer) {
         for row in 0..DISPLAY_HEIGHT {
             for col in 0..DISPLAY_WIDTH {
-                let idx = row as usize * DISPLAY_WIDTH + col as usize;
                 buf.get_mut(col as u16, row as u16)
-                    .set_char(match self.display[idx] {
+                    .set_char(match self.display[row][col] {
                         true => '█',
                         false => ' ',
                     });
@@ -251,7 +248,8 @@ impl CPU {
             0x00 => match self.last_byte(opcode) {
                 0xE0 => Instruction::ClearScreen,
                 0xEE => Instruction::ReturnFromSubroutine,
-                _ => panic!("what's going on {:#06x}", opcode),
+
+                _ => panic!("Unimplemented opcode: {:#06x}", opcode),
             },
             0x1 => Instruction::JUMP {
                 nnn: self.oxxx(opcode),
@@ -336,6 +334,9 @@ impl CPU {
                 y: self.third_nibble(opcode),
                 n: self.fourth_nibble(opcode),
             },
+            0xE => Instruction::SkipIfVxPressed {
+                x: self.second_nibble(opcode),
+            },
             0xF => match self.last_byte(opcode) {
                 0x07 => Instruction::SetXToDelayTimer {
                     x: self.second_nibble(opcode),
@@ -362,8 +363,7 @@ impl CPU {
                     x: self.second_nibble(opcode),
                 },
                 _ => {
-                    print!("0xf, also unimplemented: {:0x}", opcode);
-                    return Instruction::NOOP {};
+                    panic!("unimplemented opcode");
                 }
             },
             _ => {
@@ -375,12 +375,11 @@ impl CPU {
     ///definition
     fn execute(&mut self, instruction: Instruction) {
         match instruction {
-            Instruction::NOOP {} => {
-                println!("nooping");
-            }
             //00E0
             Instruction::ClearScreen => {
-                self.display.iter_mut().for_each(|x| *x = false);
+                self.display
+                    .iter_mut()
+                    .for_each(|x| *x = [false; DISPLAY_WIDTH]);
             }
             //00EE
             Instruction::ReturnFromSubroutine => {
@@ -524,29 +523,38 @@ impl CPU {
             }
             //DXYN
             Instruction::DISPLAY { x, y, n } => {
-                let x_coordinate = self.registers.get_register(x) % DISPLAY_WIDTH as u8;
-                let y_coordinate = self.registers.get_register(y) % DISPLAY_HEIGHT as u8;
-                let sprite_start = self.registers.get_index_register() as usize;
+                //drawing at (start_x, start_y) on the display, wraps around if out of bounds
+                let start_x = (self.registers.get_register(x) % DISPLAY_WIDTH as u8) as usize;
+                let start_y = (self.registers.get_register(y) % DISPLAY_HEIGHT as u8) as usize;
 
-                //clear 0xf register
+                let sprite_start = self.registers.get_index_register() as usize;
                 self.registers.set_register(0xF, 0);
 
-                //height of sprite is 0 through n
-                //this may fail when drawing out of bounds? maybe add a check for that
-                for sprite_row in 0..n {
-                    let sprite = self.memory.bytes[sprite_start + sprite_row as usize];
-                    //width is always 8
-                    for sprite_column in 0..8 {
-                        let x = x_coordinate + sprite_column;
-                        let y = y_coordinate + sprite_row;
-                        let display_index = x as usize + DISPLAY_WIDTH * y as usize;
-                        let value = sprite >> (7 - sprite_column) & 1 == 1;
-                        if self.display[display_index] && value {
-                            self.registers.set_register(0xf, 1);
+                //move over all rows of the sprite (it has n rows)
+                for sprite_row in 0..n as usize {
+                    if sprite_start + sprite_row >= RAM_SIZE {
+                        return;
+                    }
+                    let sprite = self.memory.bytes[sprite_start + sprite_row];
+                    for sprite_column in 0..8 as usize {
+                        let pixel_row = start_x + sprite_column;
+                        let pixel_column = start_y + sprite_row;
+
+                        let sprite_pixel_set = sprite >> (7 - sprite_column) & 1 == 1;
+
+                        //check so as to *not* draw out of bounds of the display
+                        if pixel_row < DISPLAY_WIDTH && pixel_column < DISPLAY_HEIGHT {
+                            if self.display[pixel_column][pixel_row] && sprite_pixel_set {
+                                self.registers.set_register(0xf, 1);
+                            }
+                            self.display[pixel_column][pixel_row] ^= sprite_pixel_set;
                         }
-                        self.display[display_index] ^= value;
                     }
                 }
+            }
+            //exa1
+            Instruction::SkipIfVxPressed { x } => {
+                //todo!();
             }
             //fx07
             Instruction::SetXToDelayTimer { x } => {
@@ -630,9 +638,9 @@ impl CPU {
         self.program_counter += 2;
 
         let instruction = self.decode(opcode);
-        
+
         self.execute(instruction);
-        
+
         self.registers.decrement_sound_timer();
         self.registers.decrement_delay_timer();
     }
@@ -644,7 +652,7 @@ impl CPU {
             //add all these bytes into memory, starting at 200
         }
         Self {
-            display: [false; DISPLAY_WIDTH * DISPLAY_HEIGHT],
+            display: [[false; DISPLAY_WIDTH]; DISPLAY_HEIGHT],
             program_counter: 0x200,
             registers: Registers::new(),
             memory: memory,
@@ -660,7 +668,6 @@ impl CPU {
 ///n is what's called a "nibble", it's 4 bits
 ///X and Y are registers
 enum Instruction {
-    NOOP {},           //temporary instruction, used for development purposes
     JUMP { nnn: u16 }, //1nnn where nnn is a 12 bit value (lowest 12 bits of the instruction)
     ClearScreen,       //clears the screen, does not take any arguments
     AddToRegisterX { x: u8, kk: u8 },
@@ -701,22 +708,21 @@ fn main() -> Result<()> {
 
     //folowing code is all for setting up the tui library "ratatui"
     stdout().execute(EnterAlternateScreen)?;
-    //disable input and output processing by terminal itself (and buffering i guess?)
     enable_raw_mode()?;
-    //lets the TUI library interface with a terminal
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
     terminal.clear()?;
+
     //ratatui main loop, runs 60 times per second
     loop {
         //the "cyles per frame" metric for out chip8 cpu
         for _ in 0..=CYCLES_PER_FRAME {
             c.cycle();
         }
-        //draw the ui
         terminal.draw(|frame| {
             let area = frame.size();
             frame.render_widget(c, area);
         })?;
+
         //handle input events
         if event::poll(std::time::Duration::from_millis(16))? {
             if let event::Event::Key(key) = event::read()? {
