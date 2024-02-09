@@ -3,12 +3,22 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
 };
+/*use crossterm::{
+   event::{ KeyCode, KeyEventKind},
+   terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+   ExecutableCommand,
+};*/
 use rand::Rng;
 use ratatui::{
     prelude::{Buffer, CrosstermBackend, Rect, Terminal},
     widgets::Widget,
 };
 use std::io::{stdout, Result};
+
+//all of the following dependencies are used for my janky implementation for input
+use std::collections::HashMap;
+//use std::cell::RefCell;
+//use std::rc::Rc;
 
 const DISPLAY_WIDTH: usize = 64;
 const DISPLAY_HEIGHT: usize = 32;
@@ -32,6 +42,37 @@ impl RAM {
             bytes: [0; RAM_SIZE],
         }
     }
+
+    fn with_fonts() -> Self {
+        let mut ram = Self {
+            bytes: [0; RAM_SIZE],
+        };
+
+        let fontset = vec![
+            0xF0, 0x90, 0x90, 0x90, 0xF0, //0
+            0x20, 0x60, 0x20, 0x20, 0x70, //1
+            0xF0, 0x10, 0xF0, 0x80, 0xF0, //2
+            0xF0, 0x10, 0xF0, 0x10, 0xF0, //3
+            0x90, 0x90, 0xF0, 0x10, 0x10, //4
+            0xF0, 0x80, 0xF0, 0x10, 0xF0, //5
+            0xF0, 0x80, 0xF0, 0x90, 0xF0, //6
+            0xF0, 0x10, 0x20, 0x40, 0x40, //7
+            0xF0, 0x90, 0xF0, 0x90, 0xF0, //8
+            0xF0, 0x90, 0xF0, 0x10, 0xF0, //9
+            0xF0, 0x90, 0xF0, 0x90, 0x90, //a
+            0xE0, 0x90, 0xE0, 0x90, 0xE0, //b
+            0xF0, 0x80, 0x80, 0x80, 0xF0, //c
+            0xE0, 0x90, 0x90, 0x90, 0xE0, //d
+            0xF0, 0x80, 0xF0, 0x80, 0xF0, //e
+            0xF0, 0x80, 0xF0, 0x80, 0x80,
+        ]; //f
+
+        for (idx, value) in ram.bytes[0..fontset.len()].iter_mut().enumerate() {
+            *value = fontset[idx];
+        }
+        ram
+    }
+
     ///returns a value from ram
     fn get(self, index: u16) -> u16 {
         ((self.bytes[index as usize] as u16) << 8) | self.bytes[(index + 1) as usize] as u16
@@ -219,6 +260,7 @@ struct CPU {
     ///Program counter, used to keep track of what to fetch,decode and execute from ram, initialized at 0x200
     program_counter: u16,
     memory: RAM,
+    keyboard: [(Key,bool);16],//keyboard scancodes, and their pressed state, true = pressed
     registers: Registers,
     stack: Stack, //stack for keeping track of where to return to after subroutine, can go into 16 nested subroutines before stackoverflow
     stackpointer: u8, //only contains indexes to locations in the stack, so 0 through 15
@@ -249,7 +291,7 @@ impl CPU {
                 0xE0 => Instruction::ClearScreen,
                 0xEE => Instruction::ReturnFromSubroutine,
 
-                _ => panic!("Unimplemented opcode: {:#06x}", opcode),
+                _ => Instruction::JUMP { nnn: 0x200 }, //panic!("Unimplemented opcode: {:#06x}", opcode),
             },
             0x1 => Instruction::JUMP {
                 nnn: self.oxxx(opcode),
@@ -334,8 +376,16 @@ impl CPU {
                 y: self.third_nibble(opcode),
                 n: self.fourth_nibble(opcode),
             },
-            0xE => Instruction::SkipIfVxPressed {
-                x: self.second_nibble(opcode),
+            0xE => match self.last_byte(opcode) {
+                0xA1 => Instruction::SkipIfVxNotPressed {
+                    x: self.second_nibble(opcode),
+                },
+                0x9E => Instruction::SkipIfVxPressed {
+                    x: self.second_nibble(opcode),
+                },
+                _ => {
+                    panic!("unimplemented opcode: 0x{:04x}", opcode);
+                }
             },
             0xF => match self.last_byte(opcode) {
                 0x07 => Instruction::SetXToDelayTimer {
@@ -363,7 +413,7 @@ impl CPU {
                     x: self.second_nibble(opcode),
                 },
                 _ => {
-                    panic!("unimplemented opcode");
+                    panic!("unimplemented opcode: 0x{:04x}", opcode);
                 }
             },
             _ => {
@@ -553,8 +603,11 @@ impl CPU {
                 }
             }
             //exa1
+            Instruction::SkipIfVxNotPressed { x } => {
+                //todo!("Opcode yet to be implemented");
+            }
             Instruction::SkipIfVxPressed { x } => {
-                //todo!();
+                //todo!("Opcode yet to be implemented");
             }
             //fx07
             Instruction::SetXToDelayTimer { x } => {
@@ -646,17 +699,18 @@ impl CPU {
     }
 
     fn new(rom: RomBuffer) -> Self {
-        let mut memory = RAM::new();
+        let mut memory = RAM::with_fonts();
         for (x, y) in rom.buffer.iter().enumerate() {
             memory.bytes[0x200 + x] = *y;
-            //add all these bytes into memory, starting at 200
         }
+
         Self {
             display: [[false; DISPLAY_WIDTH]; DISPLAY_HEIGHT],
             program_counter: 0x200,
             registers: Registers::new(),
             memory: memory,
             stack: Stack::new(),
+            keyboard: [(Key::Key0,false),(Key::Key1,false),(Key::Key2,false),(Key::Key3,false),(Key::Key4,false),(Key::Key5,false),(Key::Key6,false),(Key::Key7,false),(Key::Key8,false),(Key::Key9,false),(Key::KeyA,false),(Key::KeyB,false),(Key::KeyC,false),(Key::KeyD,false),(Key::KeyE,false),(Key::KeyF,false)],
             stackpointer: 0,
         }
     }
@@ -668,8 +722,9 @@ impl CPU {
 ///n is what's called a "nibble", it's 4 bits
 ///X and Y are registers
 enum Instruction {
-    JUMP { nnn: u16 }, //1nnn where nnn is a 12 bit value (lowest 12 bits of the instruction)
-    ClearScreen,       //clears the screen, does not take any arguments
+    ClearScreen,          //00e0
+    ReturnFromSubroutine, //00ee
+    JUMP { nnn: u16 },    //1nnn where nnn is a 12 bit value (lowest 12 bits of the instruction)
     AddToRegisterX { x: u8, kk: u8 },
     CallSubroutineAtNNN { nnn: u16 },
     LoadRegisterX { x: u8, kk: u8 }, //6xkk puts the value kk into Vx
@@ -682,15 +737,15 @@ enum Instruction {
     ShiftXLeft1 { x: u8 },           //8xyE
     SubXFromY { x: u8, y: u8 },      //8xy7
     LoadRegisterXIntoY { x: u8, y: u8 }, //Stores the value of register Vy in register Vx
-    ReturnFromSubroutine, //pops the previous program_counter from the stack and makes it active
-    SetIndexRegister { nnn: u16 }, //ANNN set index register I to nnn
+    SetIndexRegister { nnn: u16 },   //ANNN set index register I to nnn
     SkipNextInstructionIfXIsKK { x: u8, kk: u8 }, //skips the next instruction only if the register X holds the value kk
     SkipNextInstructionIfXIsNotKK { x: u8, kk: u8 }, //same as previous, except skips if register x does not hold value kk
     SkipNextInstructionIfXIsY { x: u8, y: u8 },
     SkipNextInstructionIfXIsNotY { x: u8, y: u8 },
     SetXToRandom { x: u8, kk: u8 },  //cxkk
     DISPLAY { x: u8, y: u8, n: u8 }, //DXYN draws a sprite at coordinate from vx and vy, of width 8 and height n
-    SkipIfVxPressed { x: u8 },       //exa1
+    SkipIfVxNotPressed { x: u8 },    //exa1
+    SkipIfVxPressed { x: u8 },       //ex9e
     SetXToDelayTimer { x: u8 },      //fx07
     SetDelayTimerToX { x: u8 },      //Fx15
     SetSoundTimerToX { x: u8 },      //fx18
@@ -701,7 +756,28 @@ enum Instruction {
     Load0ThroughX { x: u8 },         //fx65
 }
 
+#[derive(Debug,Copy,Clone, Hash, Eq, PartialEq)]
+enum Key {
+    Key0,
+    Key1,
+    Key2,
+    Key3,
+    Key4,
+    Key5,
+    Key6,
+    Key7,
+    Key8,
+    Key9,
+    KeyA,
+    KeyB,
+    KeyC,
+    KeyD,
+    KeyE,
+    KeyF,
+}
+
 fn main() -> Result<()> {
+
     //creating a chip8 cpu object with a rom loaded
     let b = RomBuffer::new("./pong.ch8");
     let mut c = CPU::new(b);
@@ -726,10 +802,24 @@ fn main() -> Result<()> {
         //handle input events
         if event::poll(std::time::Duration::from_millis(16))? {
             if let event::Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press && key.code == KeyCode::Char('q')
-                    || key.code == KeyCode::Char('Q')
-                {
-                    break;
+                match key.code {
+                    KeyCode::Char('q') => {
+                        if key.kind == KeyEventKind::Press {
+                            break;
+                        }
+                    }
+                    _ => {}
+                    KeyCode::Char('w') => {
+                        if key.kind == KeyEventKind::Press {
+                            c.keyboard[0] = (Key::Key0,true);
+                        }else {
+                            c.keyboard[0] =  (Key::Key0,false);
+                        }
+                        println!("w pressed");
+                    },
+                    _ => {
+                        println!("{:?} pressed",key.code);
+                    },
                 }
             }
         }
