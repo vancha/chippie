@@ -260,7 +260,7 @@ struct CPU {
     ///Program counter, used to keep track of what to fetch,decode and execute from ram, initialized at 0x200
     program_counter: u16,
     memory: RAM,
-    keyboard: [(Key,bool);16],//keyboard scancodes, and their pressed state, true = pressed
+    keyboard: [bool; 16], //keyboard scancodes, and their pressed state, true = pressed
     registers: Registers,
     stack: Stack, //stack for keeping track of where to return to after subroutine, can go into 16 nested subroutines before stackoverflow
     stackpointer: u8, //only contains indexes to locations in the stack, so 0 through 15
@@ -604,6 +604,7 @@ impl CPU {
             }
             //exa1
             Instruction::SkipIfVxNotPressed { x } => {
+                //println!("{}: {:?}",x, self.keyboard[x as usize]);
                 //todo!("Opcode yet to be implemented");
             }
             Instruction::SkipIfVxPressed { x } => {
@@ -710,7 +711,10 @@ impl CPU {
             registers: Registers::new(),
             memory: memory,
             stack: Stack::new(),
-            keyboard: [(Key::Key0,false),(Key::Key1,false),(Key::Key2,false),(Key::Key3,false),(Key::Key4,false),(Key::Key5,false),(Key::Key6,false),(Key::Key7,false),(Key::Key8,false),(Key::Key9,false),(Key::KeyA,false),(Key::KeyB,false),(Key::KeyC,false),(Key::KeyD,false),(Key::KeyE,false),(Key::KeyF,false)],
+            keyboard: [
+                false, false, false, false, false, false, false, false, false, false, false, false,
+                false, false, false, false,
+            ],
             stackpointer: 0,
         }
     }
@@ -756,7 +760,7 @@ enum Instruction {
     Load0ThroughX { x: u8 },         //fx65
 }
 
-#[derive(Debug,Copy,Clone, Hash, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
 enum Key {
     Key0,
     Key1,
@@ -777,7 +781,6 @@ enum Key {
 }
 
 fn main() -> Result<()> {
-
     //creating a chip8 cpu object with a rom loaded
     let b = RomBuffer::new("./pong.ch8");
     let mut c = CPU::new(b);
@@ -787,13 +790,14 @@ fn main() -> Result<()> {
     enable_raw_mode()?;
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
     terminal.clear()?;
-
+    let mut running = true;
     //ratatui main loop, runs 60 times per second
-    loop {
+    while running {
         //the "cyles per frame" metric for out chip8 cpu
         for _ in 0..=CYCLES_PER_FRAME {
             c.cycle();
         }
+        
         terminal.draw(|frame| {
             let area = frame.size();
             frame.render_widget(c, area);
@@ -802,24 +806,109 @@ fn main() -> Result<()> {
         //handle input events
         if event::poll(std::time::Duration::from_millis(16))? {
             if let event::Event::Key(key) = event::read()? {
+                match key.kind {
+                    KeyEventKind::Release => {
+                        panic!("release");
+                    },
+                    KeyEventKind::Press => {
+                        println!("press");
+                    },
+                    _ => {},
+                }
                 match key.code {
                     KeyCode::Char('q') => {
                         if key.kind == KeyEventKind::Press {
-                            break;
+                            running = false;
+                            //break;
                         }
                     }
-                    _ => {}
+                    
+                    KeyCode::Char('0') => {
+                        match key.kind {
+                            KeyEventKind::Release => {
+                                 println!("KEY 0 HAS BEEN RELEASED!!!!!!!");
+                                 c.keyboard[0] = false;
+                            },
+                            _ => {},
+                        }
+                    }
+                    /*
+                    KeyCode::Char('1') => {
+                        if key.kind == KeyEventKind::Press {
+                            c.keyboard[1] = true;
+                        } else {
+                            c.keyboard[1] = false;
+                        }
+                    }
+
+                    KeyCode::Char('2') => {
+                        if key.kind == KeyEventKind::Press {
+                            c.keyboard[2] = true;
+                        } else {
+                            c.keyboard[2] = false;
+                        }
+                    }
+                    KeyCode::Char('3') => {
+                        if key.kind == KeyEventKind::Press {
+                            c.keyboard[3] = true;
+                        } else {
+                            c.keyboard[3] = false;
+                        }
+                    }
+                    KeyCode::Char('4') => {
+                        if key.kind == KeyEventKind::Press {
+                            c.keyboard[4] = true;
+                        } else {
+                            c.keyboard[4] = false;
+                        }
+                    }
+                    KeyCode::Char('5') => {
+                        if key.kind == KeyEventKind::Press {
+                            c.keyboard[5] = true;
+                        } else {
+                            c.keyboard[5] = false;
+                        }
+                    }
+                    KeyCode::Char('6') => {
+                        if key.kind == KeyEventKind::Press {
+                            c.keyboard[6] = true;
+                        } else {
+                            c.keyboard[6] = false;
+                        }
+                    }
+                    KeyCode::Char('7') => {
+                        if key.kind == KeyEventKind::Press {
+                            c.keyboard[7] = true;
+                        } else {
+                            c.keyboard[7] = false;
+                        }
+                    }
+                    KeyCode::Char('8') => {
+                        if key.kind == KeyEventKind::Press {
+                            c.keyboard[8] = true;
+                        } else {
+                            c.keyboard[8] = false;
+                        }
+                    }
+                    KeyCode::Char('9') => {
+                        if key.kind == KeyEventKind::Press {
+                            c.keyboard[9] = true;
+                        } else {
+                            c.keyboard[9] = false;
+                        }
+                    }
+
                     KeyCode::Char('w') => {
                         if key.kind == KeyEventKind::Press {
-                            c.keyboard[0] = (Key::Key0,true);
-                        }else {
-                            c.keyboard[0] =  (Key::Key0,false);
+                            c.keyboard[0] = true;
+                        } else {
+                            c.keyboard[0] = false;
                         }
                         println!("w pressed");
-                    },
+                    }*/
                     _ => {
-                        println!("{:?} pressed",key.code);
-                    },
+                        println!("{:?} pressed", key.code);
+                    }
                 }
             }
         }
