@@ -143,11 +143,10 @@ impl CPU {
 
     fn decode(&self, opcode: u16) -> Instruction {
         match self.first_nibble(opcode) {
-            0x00 => match self.last_byte(opcode) {
+            0x0 => match self.last_byte(opcode) {
                 0xE0 => Instruction::ClearScreen,
                 0xEE => Instruction::ReturnFromSubroutine,
-
-                _ => panic!("Unimplemented opcode: {:#04x}", opcode),
+                _ => Instruction::NOOP,//panic!("Unimplemented opcode: {:#04x}", opcode),
             },
             0x1 => Instruction::JUMP {
                 nnn: self.oxxx(opcode),
@@ -272,7 +271,7 @@ impl CPU {
                     x: self.second_nibble(opcode),
                 },
                 _ => {
-                    panic!("unimplemented opcode: 0x{:04x}", opcode);
+                    panic!("unimplemented opcode: 0x{:06x}", opcode);
                 }
             },
             _ => {
@@ -308,6 +307,9 @@ impl CPU {
     ///definition
     fn execute(&mut self, instruction: Instruction) {
         match instruction {
+            Instruction::NOOP => {
+                //do nothing...
+            }
             //00E0
             Instruction::ClearScreen => {
                 self.display
@@ -487,21 +489,22 @@ impl CPU {
             }
             //exa1
             Instruction::SkipIfVxNotPressed { x } => {
-                let key = CPU::u8_to_keycode(x & 0xf);
+                let key = CPU::u8_to_keycode(self.registers.get_register(x) & 0xf);
                 if !is_key_down(key) {
                     self.program_counter += 2;
                 }
             }
             //ex9e
             Instruction::SkipIfVxPressed { x } => {
-                let key = CPU::u8_to_keycode(x & 0xF);
+                let key =  CPU::u8_to_keycode(self.registers.get_register(x) & 0xf); 
                 if is_key_down(key) {
                     self.program_counter += 2;
                 }
             }
             //fx0a
             Instruction::WaitForVxPressed { x } => {
-                while !is_key_down(CPU::u8_to_keycode(x & 0xF)) {
+                let key = CPU::u8_to_keycode(self.registers.get_register(x) & 0xf);
+                while !is_key_down(key) {
                     println!("waiting until {:?} is pressed", x);
                 }
             }
@@ -615,6 +618,7 @@ impl CPU {
 ///n is what's called a "nibble", it's 4 bits
 ///X and Y are registers
 enum Instruction {
+    NOOP,                 //0nnn
     ClearScreen,          //00e0
     ReturnFromSubroutine, //00ee
     JUMP { nnn: u16 },    //1nnn where nnn is a 12 bit value (lowest 12 bits of the instruction)
@@ -653,7 +657,7 @@ enum Instruction {
 #[macroquad::main("InputKeys")]
 async fn main() {
     //creating a chip8 cpu object with a rom loaded
-    let b = RomBuffer::new("./pong.ch8");
+    let b = RomBuffer::new("./quirks.ch8");
     let mut c = CPU::new(b);
 
     //used for
