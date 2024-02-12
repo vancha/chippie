@@ -1,24 +1,7 @@
-use crossterm::{
-    event::{self, KeyCode, KeyEventKind},
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-    ExecutableCommand,
-};
-/*use crossterm::{
-   event::{ KeyCode, KeyEventKind},
-   terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-   ExecutableCommand,
-};*/
-use rand::Rng;
-use ratatui::{
-    prelude::{Buffer, CrosstermBackend, Rect, Terminal},
-    widgets::Widget,
-};
-use std::io::{stdout, Result};
+use ::rand::thread_rng;
+use ::rand::Rng;
 
-//all of the following dependencies are used for my janky implementation for input
-use std::collections::HashMap;
-//use std::cell::RefCell;
-//use std::rc::Rc;
+use macroquad::prelude::*;
 
 const DISPLAY_WIDTH: usize = 64;
 const DISPLAY_HEIGHT: usize = 32;
@@ -36,13 +19,6 @@ struct RAM {
     bytes: [u8; RAM_SIZE],
 }
 impl RAM {
-    ///Returns an empty ram object, no fonts, no rom, just empty bytes
-    fn new() -> Self {
-        Self {
-            bytes: [0; RAM_SIZE],
-        }
-    }
-
     fn with_fonts() -> Self {
         let mut ram = Self {
             bytes: [0; RAM_SIZE],
@@ -91,23 +67,7 @@ impl RomBuffer {
 #[derive(Clone, Copy)]
 ///# All 16 8 bit registers, and the 16 bit I register
 struct Registers {
-    v0: u8,
-    v1: u8,
-    v2: u8,
-    v3: u8,
-    v4: u8,
-    v5: u8,
-    v6: u8,
-    v7: u8,
-    v8: u8,
-    v9: u8,
-    va: u8,
-    vb: u8,
-    vc: u8,
-    vd: u8,
-    ve: u8,
-    vf: u8,
-
+    register: [u8; 16],
     vindex: u16,
     delay_timer: u8,
     sound_timer: u8,
@@ -116,23 +76,7 @@ struct Registers {
 impl Registers {
     fn new() -> Self {
         Registers {
-            v0: 0,
-            v1: 0,
-            v2: 0,
-            v3: 0,
-            v4: 0,
-            v5: 0,
-            v6: 0,
-            v7: 0,
-            v8: 0,
-            v9: 0,
-            va: 0,
-            vb: 0,
-            vc: 0,
-            vd: 0,
-            ve: 0,
-            vf: 0,
-
+            register: [0u8; 16],
             vindex: 0,
             delay_timer: 0,
             sound_timer: 0,
@@ -165,82 +109,10 @@ impl Registers {
     }
 
     fn get_register(&self, register: u8) -> u8 {
-        match register {
-            0 => self.v0,
-            1 => self.v1,
-            2 => self.v2,
-            3 => self.v3,
-            4 => self.v4,
-            5 => self.v5,
-            6 => self.v6,
-            7 => self.v7,
-            8 => self.v8,
-            9 => self.v9,
-            0xA => self.va,
-            0xB => self.vb,
-            0xC => self.vc,
-            0xD => self.vd,
-            0xE => self.ve,
-            0xF => self.vf,
-            _ => {
-                panic!("Invalid register");
-            }
-        }
+        return self.register[register as usize];
     }
     fn set_register(&mut self, register: u8, value: u8) {
-        match register {
-            0 => {
-                self.v0 = value;
-            }
-            1 => {
-                self.v1 = value;
-            }
-            2 => {
-                self.v2 = value;
-            }
-            3 => {
-                self.v3 = value;
-            }
-            4 => {
-                self.v4 = value;
-            }
-            5 => {
-                self.v5 = value;
-            }
-            6 => {
-                self.v6 = value;
-            }
-            7 => {
-                self.v7 = value;
-            }
-            8 => {
-                self.v8 = value;
-            }
-            9 => {
-                self.v9 = value;
-            }
-            0xA => {
-                self.va = value;
-            }
-            0xB => {
-                self.vb = value;
-            }
-            0xC => {
-                self.vc = value;
-            }
-            0xD => {
-                self.vd = value;
-            }
-            0xE => {
-                self.ve = value;
-            }
-            0xF => {
-                self.vf = value;
-            }
-            _ => {
-                panic!("Invalid register");
-            }
-        }
+        self.register[register as usize] = value;
     }
 }
 
@@ -254,32 +126,16 @@ impl Stack {
     }
 }
 
-#[derive(Clone, Copy)]
 struct CPU {
     display: [[bool; DISPLAY_WIDTH]; DISPLAY_HEIGHT],
     ///Program counter, used to keep track of what to fetch,decode and execute from ram, initialized at 0x200
     program_counter: u16,
     memory: RAM,
-    keyboard: [bool; 16], //keyboard scancodes, and their pressed state, true = pressed
     registers: Registers,
     stack: Stack, //stack for keeping track of where to return to after subroutine, can go into 16 nested subroutines before stackoverflow
     stackpointer: u8, //only contains indexes to locations in the stack, so 0 through 15
 }
 
-//ratatui's 'widget' trait, to draw the display :)
-impl Widget for CPU {
-    fn render(self, _area: Rect, buf: &mut Buffer) {
-        for row in 0..DISPLAY_HEIGHT {
-            for col in 0..DISPLAY_WIDTH {
-                buf.get_mut(col as u16, row as u16)
-                    .set_char(match self.display[row][col] {
-                        true => '█',
-                        false => ' ',
-                    });
-            }
-        }
-    }
-}
 impl CPU {
     fn fetch(&self, ram: &RAM) -> u16 {
         ram.get(self.program_counter)
@@ -291,7 +147,7 @@ impl CPU {
                 0xE0 => Instruction::ClearScreen,
                 0xEE => Instruction::ReturnFromSubroutine,
 
-                _ => Instruction::JUMP { nnn: 0x200 }, //panic!("Unimplemented opcode: {:#06x}", opcode),
+                _ => panic!("Unimplemented opcode: {:#04x}", opcode),
             },
             0x1 => Instruction::JUMP {
                 nnn: self.oxxx(opcode),
@@ -388,6 +244,9 @@ impl CPU {
                 }
             },
             0xF => match self.last_byte(opcode) {
+                0x0A => Instruction::WaitForVxPressed {
+                    x: self.second_nibble(opcode),
+                },
                 0x07 => Instruction::SetXToDelayTimer {
                     x: self.second_nibble(opcode),
                 },
@@ -421,6 +280,30 @@ impl CPU {
             }
         }
     }
+    fn u8_to_keycode(code: u8) -> macroquad::input::KeyCode {
+        match code {
+            0x0 => macroquad::input::KeyCode::X,
+            0x1 => macroquad::input::KeyCode::Key1,
+            0x2 => macroquad::input::KeyCode::Key2,
+            0x3 => macroquad::input::KeyCode::Key3,
+            0x4 => macroquad::input::KeyCode::Q,
+            0x5 => macroquad::input::KeyCode::W,
+            0x6 => macroquad::input::KeyCode::E,
+            0x7 => macroquad::input::KeyCode::A,
+            0x8 => macroquad::input::KeyCode::S,
+            0x9 => macroquad::input::KeyCode::D,
+            0xa => macroquad::input::KeyCode::Z,
+            0xb => macroquad::input::KeyCode::C,
+            0xc => macroquad::input::KeyCode::Key3,
+            0xd => macroquad::input::KeyCode::R,
+            0xe => macroquad::input::KeyCode::F,
+            0xf => macroquad::input::KeyCode::V,
+            _ => {
+                panic!("Invalid keycode");
+            }
+        }
+    }
+
     ///Execute the instruction, for details on the instruction, check the instruction enum
     ///definition
     fn execute(&mut self, instruction: Instruction) {
@@ -478,7 +361,7 @@ impl CPU {
             Instruction::AddToRegisterX { x, kk } => {
                 let vx = self.registers.get_register(x);
 
-                let (tmp, overflow) = vx.overflowing_add(kk); // as u16 + kk as u16;
+                let (tmp, _overflow) = vx.overflowing_add(kk); // as u16 + kk as u16;
                 self.registers.set_register(x, tmp);
             }
             //8xy0
@@ -567,7 +450,7 @@ impl CPU {
             }
             //cxkk
             Instruction::SetXToRandom { x, kk } => {
-                let mut rng = rand::thread_rng();
+                let mut rng = thread_rng();
                 let random_number = rng.gen_range(0..=255);
                 self.registers.set_register(x, random_number & kk);
             }
@@ -604,24 +487,34 @@ impl CPU {
             }
             //exa1
             Instruction::SkipIfVxNotPressed { x } => {
-                //println!("{}: {:?}",x, self.keyboard[x as usize]);
-                //todo!("Opcode yet to be implemented");
+                let key = CPU::u8_to_keycode(x & 0xf);
+                if !is_key_down(key) {
+                    self.program_counter += 2;
+                }
             }
+            //ex9e
             Instruction::SkipIfVxPressed { x } => {
-                //todo!("Opcode yet to be implemented");
+                let key = CPU::u8_to_keycode(x & 0xF);
+                if is_key_down(key) {
+                    self.program_counter += 2;
+                }
+            }
+            //fx0a
+            Instruction::WaitForVxPressed { x } => {
+                while !is_key_down(CPU::u8_to_keycode(x & 0xF)) {
+                    println!("waiting until {:?} is pressed", x);
+                }
             }
             //fx07
             Instruction::SetXToDelayTimer { x } => {
                 let vdt = self.registers.get_delay_timer();
                 self.registers.set_register(x, vdt);
             }
-
             //fx15
             Instruction::SetDelayTimerToX { x } => {
                 let vx = self.registers.get_register(x);
-                self.registers.delay_timer = vx;
+                self.registers.set_delay_timer(vx);
             }
-
             Instruction::SetSoundTimerToX { x } => {
                 let vx = self.registers.get_register(x);
                 self.registers.set_sound_timer(vx);
@@ -636,7 +529,7 @@ impl CPU {
             }
             //fx29
             Instruction::SetIToSpriteX { x } => {
-                let vx = self.registers.get_register(x);
+                let _vx = self.registers.get_register(x);
             }
             Instruction::LoadBCDOfX { x } => {
                 let vx = self.registers.get_register(x);
@@ -711,10 +604,6 @@ impl CPU {
             registers: Registers::new(),
             memory: memory,
             stack: Stack::new(),
-            keyboard: [
-                false, false, false, false, false, false, false, false, false, false, false, false,
-                false, false, false, false,
-            ],
             stackpointer: 0,
         }
     }
@@ -750,6 +639,7 @@ enum Instruction {
     DISPLAY { x: u8, y: u8, n: u8 }, //DXYN draws a sprite at coordinate from vx and vy, of width 8 and height n
     SkipIfVxNotPressed { x: u8 },    //exa1
     SkipIfVxPressed { x: u8 },       //ex9e
+    WaitForVxPressed { x: u8 },      //fx0a
     SetXToDelayTimer { x: u8 },      //fx07
     SetDelayTimerToX { x: u8 },      //Fx15
     SetSoundTimerToX { x: u8 },      //fx18
@@ -760,160 +650,59 @@ enum Instruction {
     Load0ThroughX { x: u8 },         //fx65
 }
 
-#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
-enum Key {
-    Key0,
-    Key1,
-    Key2,
-    Key3,
-    Key4,
-    Key5,
-    Key6,
-    Key7,
-    Key8,
-    Key9,
-    KeyA,
-    KeyB,
-    KeyC,
-    KeyD,
-    KeyE,
-    KeyF,
-}
-
-fn main() -> Result<()> {
+#[macroquad::main("InputKeys")]
+async fn main() {
     //creating a chip8 cpu object with a rom loaded
     let b = RomBuffer::new("./pong.ch8");
     let mut c = CPU::new(b);
 
-    //folowing code is all for setting up the tui library "ratatui"
-    stdout().execute(EnterAlternateScreen)?;
-    enable_raw_mode()?;
-    let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
-    terminal.clear()?;
+    //used for
+    let mut image = Image::gen_image_color(DISPLAY_WIDTH as u16, DISPLAY_HEIGHT as u16, WHITE);
+    let mut buffer = vec![false; DISPLAY_WIDTH * DISPLAY_HEIGHT];
+    let texture = Texture2D::from_image(&image);
+
     let mut running = true;
-    //ratatui main loop, runs 60 times per second
+
     while running {
-        //the "cyles per frame" metric for out chip8 cpu
+        if is_key_pressed(KeyCode::Escape) {
+            running = false;
+            continue;
+        }
+
         for _ in 0..=CYCLES_PER_FRAME {
             c.cycle();
         }
-        
-        terminal.draw(|frame| {
-            let area = frame.size();
-            frame.render_widget(c, area);
-        })?;
 
-        //handle input events
-        if event::poll(std::time::Duration::from_millis(16))? {
-            if let event::Event::Key(key) = event::read()? {
-                match key.kind {
-                    KeyEventKind::Release => {
-                        panic!("release");
-                    },
-                    KeyEventKind::Press => {
-                        println!("press");
-                    },
-                    _ => {},
-                }
-                match key.code {
-                    KeyCode::Char('q') => {
-                        if key.kind == KeyEventKind::Press {
-                            running = false;
-                            //break;
-                        }
-                    }
-                    
-                    KeyCode::Char('0') => {
-                        match key.kind {
-                            KeyEventKind::Release => {
-                                 println!("KEY 0 HAS BEEN RELEASED!!!!!!!");
-                                 c.keyboard[0] = false;
-                            },
-                            _ => {},
-                        }
-                    }
-                    /*
-                    KeyCode::Char('1') => {
-                        if key.kind == KeyEventKind::Press {
-                            c.keyboard[1] = true;
-                        } else {
-                            c.keyboard[1] = false;
-                        }
-                    }
-
-                    KeyCode::Char('2') => {
-                        if key.kind == KeyEventKind::Press {
-                            c.keyboard[2] = true;
-                        } else {
-                            c.keyboard[2] = false;
-                        }
-                    }
-                    KeyCode::Char('3') => {
-                        if key.kind == KeyEventKind::Press {
-                            c.keyboard[3] = true;
-                        } else {
-                            c.keyboard[3] = false;
-                        }
-                    }
-                    KeyCode::Char('4') => {
-                        if key.kind == KeyEventKind::Press {
-                            c.keyboard[4] = true;
-                        } else {
-                            c.keyboard[4] = false;
-                        }
-                    }
-                    KeyCode::Char('5') => {
-                        if key.kind == KeyEventKind::Press {
-                            c.keyboard[5] = true;
-                        } else {
-                            c.keyboard[5] = false;
-                        }
-                    }
-                    KeyCode::Char('6') => {
-                        if key.kind == KeyEventKind::Press {
-                            c.keyboard[6] = true;
-                        } else {
-                            c.keyboard[6] = false;
-                        }
-                    }
-                    KeyCode::Char('7') => {
-                        if key.kind == KeyEventKind::Press {
-                            c.keyboard[7] = true;
-                        } else {
-                            c.keyboard[7] = false;
-                        }
-                    }
-                    KeyCode::Char('8') => {
-                        if key.kind == KeyEventKind::Press {
-                            c.keyboard[8] = true;
-                        } else {
-                            c.keyboard[8] = false;
-                        }
-                    }
-                    KeyCode::Char('9') => {
-                        if key.kind == KeyEventKind::Press {
-                            c.keyboard[9] = true;
-                        } else {
-                            c.keyboard[9] = false;
-                        }
-                    }
-
-                    KeyCode::Char('w') => {
-                        if key.kind == KeyEventKind::Press {
-                            c.keyboard[0] = true;
-                        } else {
-                            c.keyboard[0] = false;
-                        }
-                        println!("w pressed");
-                    }*/
-                    _ => {
-                        println!("{:?} pressed", key.code);
-                    }
-                }
+        clear_background(WHITE);
+        for y in 0..DISPLAY_HEIGHT as i32 {
+            for x in 0..DISPLAY_WIDTH as i32 {
+                buffer[y as usize * DISPLAY_WIDTH + x as usize] = c.display[y as usize][x as usize];
             }
         }
+        for i in 0..buffer.len() {
+            image.set_pixel(
+                (i % DISPLAY_WIDTH) as u32,
+                (i / DISPLAY_WIDTH) as u32,
+                match buffer[i as usize] {
+                    true => BLACK,
+                    false => WHITE,
+                },
+            );
+        }
+
+        texture.update(&image);
+
+        draw_texture_ex(
+            &texture,
+            0.0,
+            0.0,
+            WHITE,
+            DrawTextureParams {
+                dest_size: Some(vec2(screen_width(), screen_height())),
+                ..Default::default()
+            },
+        );
+
+        next_frame().await;
     }
-    stdout().execute(LeaveAlternateScreen)?;
-    disable_raw_mode()?;
-    Ok(())
 }
