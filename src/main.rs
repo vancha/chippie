@@ -6,7 +6,7 @@ use macroquad::prelude::*;
 const DISPLAY_WIDTH: usize = 64;
 const DISPLAY_HEIGHT: usize = 32;
 const RAM_SIZE: usize = 4096; //in bytes :)
-const CYCLES_PER_FRAME: usize = 15;
+const CYCLES_PER_FRAME: usize = 5;
 
 ///The ram of the chip8 cpu, uses big endian, and is laid out in the following way:
 ///0x000 start of chip-8 ram
@@ -40,8 +40,8 @@ impl RAM {
             0xF0, 0x80, 0x80, 0x80, 0xF0, //c
             0xE0, 0x90, 0x90, 0x90, 0xE0, //d
             0xF0, 0x80, 0xF0, 0x80, 0xF0, //e
-            0xF0, 0x80, 0xF0, 0x80, 0x80,
-        ]; //f
+            0xF0, 0x80, 0xF0, 0x80, 0x80, //f
+        ]; //lets do something non-standard, implement more fonts...
 
         for (idx, value) in ram.bytes[0..fontset.len()].iter_mut().enumerate() {
             *value = fontset[idx];
@@ -247,7 +247,7 @@ impl CPU {
                 }
             },
             0xF => match self.last_byte(opcode) {
-                0x0A => Instruction::WaitForVxPressed {
+                0x0A => Instruction::WaitForKeyPressed {
                     x: self.second_nibble(opcode),
                 },
                 0x07 => Instruction::SetXToDelayTimer {
@@ -327,6 +327,7 @@ impl CPU {
             }
             //1NNN
             Instruction::JUMP { nnn } => {
+                println!("Jumping to {:?}",nnn);
                 self.program_counter = nnn;
             }
             //2NNN
@@ -511,9 +512,10 @@ impl CPU {
                 }
             }
             //fx0a
-            Instruction::WaitForVxPressed { x } => {
+            Instruction::WaitForKeyPressed { x } => {
                 let key = CPU::u8_to_keycode(self.registers.get_register(x) & 0xf);
-                while !is_key_down(key) {}
+                //wait for when a key is 
+                //while !is_key_down(key) {}
             }
             //fx07
             Instruction::SetXToDelayTimer { x } => {
@@ -653,7 +655,7 @@ enum Instruction {
     DISPLAY { x: u8, y: u8, n: u8 }, //DXYN draws a sprite at coordinate from vx and vy, of width 8 and height n
     SkipIfVxNotPressed { x: u8 },    //exa1
     SkipIfVxPressed { x: u8 },       //ex9e
-    WaitForVxPressed { x: u8 },      //fx0a
+    WaitForKeyPressed { x: u8 },      //fx0a
     SetXToDelayTimer { x: u8 },      //fx07
     SetDelayTimerToX { x: u8 },      //Fx15
     SetSoundTimerToX { x: u8 },      //fx18
@@ -664,17 +666,17 @@ enum Instruction {
     Load0ThroughX { x: u8 },         //fx65
 }
 
-#[macroquad::main("InputKeys")]
+#[macroquad::main("Chip 8 interpreter \"Chippie\" ")]
 async fn main() {
     //creating a chip8 cpu object with a rom loaded
-    let b = RomBuffer::new("./pong.ch8");
+    let b = RomBuffer::new("./custom.ch8");
     let mut c = CPU::new(b);
 
     //used for
     let mut image = Image::gen_image_color(DISPLAY_WIDTH as u16, DISPLAY_HEIGHT as u16, WHITE);
     let mut buffer = vec![false; DISPLAY_WIDTH * DISPLAY_HEIGHT];
     let texture = Texture2D::from_image(&image);
-
+    texture.set_filter(FilterMode::Nearest);
     let mut running = true;
 
     while running {
