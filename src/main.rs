@@ -46,6 +46,7 @@ impl RAM {
         for (idx, value) in ram.bytes[0..fontset.len()].iter_mut().enumerate() {
             *value = fontset[idx];
         }
+        println!("mom-oh-ree: {:?}", &ram);
         ram
     }
 
@@ -146,7 +147,7 @@ impl CPU {
             0x0 => match self.last_byte(opcode) {
                 0xE0 => Instruction::ClearScreen,
                 0xEE => Instruction::ReturnFromSubroutine,
-                _ => Instruction::NOOP,//panic!("Unimplemented opcode: {:#04x}", opcode),
+                _ => Instruction::NOOP, //panic!("Unimplemented opcode: {:#04x}", opcode),
             },
             0x1 => Instruction::JUMP {
                 nnn: self.oxxx(opcode),
@@ -220,6 +221,9 @@ impl CPU {
                 y: self.third_nibble(opcode),
             },
             0xA => Instruction::SetIndexRegister {
+                nnn: self.oxxx(opcode),
+            },
+            0xB => Instruction::JumpToAddressPlusV0 {
                 nnn: self.oxxx(opcode),
             },
             0xC => Instruction::SetXToRandom {
@@ -450,6 +454,11 @@ impl CPU {
             Instruction::SetIndexRegister { nnn } => {
                 self.registers.set_index_register(nnn);
             }
+            //BNNN
+            Instruction::JumpToAddressPlusV0 { nnn } => {
+                let v0 = (self.registers.get_register(0) & 0xf) as u16;
+                self.program_counter = nnn + v0;
+            }
             //cxkk
             Instruction::SetXToRandom { x, kk } => {
                 let mut rng = thread_rng();
@@ -496,7 +505,7 @@ impl CPU {
             }
             //ex9e
             Instruction::SkipIfVxPressed { x } => {
-                let key =  CPU::u8_to_keycode(self.registers.get_register(x) & 0xf); 
+                let key = CPU::u8_to_keycode(self.registers.get_register(x) & 0xf);
                 if is_key_down(key) {
                     self.program_counter += 2;
                 }
@@ -504,9 +513,7 @@ impl CPU {
             //fx0a
             Instruction::WaitForVxPressed { x } => {
                 let key = CPU::u8_to_keycode(self.registers.get_register(x) & 0xf);
-                while !is_key_down(key) {
-                    println!("waiting until {:?} is pressed", x);
-                }
+                while !is_key_down(key) {}
             }
             //fx07
             Instruction::SetXToDelayTimer { x } => {
@@ -532,7 +539,9 @@ impl CPU {
             }
             //fx29
             Instruction::SetIToSpriteX { x } => {
-                let _vx = self.registers.get_register(x);
+                let vx = (self.registers.get_register(x) * 5) as u16 & 0xffff;
+                //the sprite at *index* x, not location x.
+                self.registers.set_index_register(vx);
             }
             Instruction::LoadBCDOfX { x } => {
                 let vx = self.registers.get_register(x);
@@ -635,6 +644,7 @@ enum Instruction {
     SubXFromY { x: u8, y: u8 },      //8xy7
     LoadRegisterXIntoY { x: u8, y: u8 }, //Stores the value of register Vy in register Vx
     SetIndexRegister { nnn: u16 },   //ANNN set index register I to nnn
+    JumpToAddressPlusV0 { nnn: u16 }, //BNNN jump to address nnn + v0
     SkipNextInstructionIfXIsKK { x: u8, kk: u8 }, //skips the next instruction only if the register X holds the value kk
     SkipNextInstructionIfXIsNotKK { x: u8, kk: u8 }, //same as previous, except skips if register x does not hold value kk
     SkipNextInstructionIfXIsY { x: u8, y: u8 },
@@ -657,7 +667,7 @@ enum Instruction {
 #[macroquad::main("InputKeys")]
 async fn main() {
     //creating a chip8 cpu object with a rom loaded
-    let b = RomBuffer::new("./quirks.ch8");
+    let b = RomBuffer::new("./pong.ch8");
     let mut c = CPU::new(b);
 
     //used for
