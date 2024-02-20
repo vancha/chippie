@@ -669,7 +669,7 @@ enum Instruction {
 #[macroquad::main("Chip 8 interpreter \"Chippie\" ")]
 async fn main() {
     //creating a chip8 cpu object with a rom loaded
-    let b = RomBuffer::new("./custom.ch8");
+    let b = RomBuffer::new("./pong.ch8");
     let mut c = CPU::new(b);
 
     //used for
