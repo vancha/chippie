@@ -41,7 +41,7 @@ impl RAM {
             0xE0, 0x90, 0x90, 0x90, 0xE0, //d
             0xF0, 0x80, 0xF0, 0x80, 0xF0, //e
             0xF0, 0x80, 0xF0, 0x80, 0x80, //f
-        ]; //lets do something non-standard, implement more fonts...
+        ];
 
         for (idx, value) in ram.bytes[0..fontset.len()].iter_mut().enumerate() {
             *value = fontset[idx];
