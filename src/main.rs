@@ -1,11 +1,14 @@
-use ::rand::thread_rng;
 use ::rand::Rng;
-
+use ::rand::thread_rng;
 use macroquad::prelude::*;
 
+/// The width of the display in pixels
 const DISPLAY_WIDTH: usize = 64;
+/// The height of the display in pixels
 const DISPLAY_HEIGHT: usize = 32;
-const RAM_SIZE: usize = 4096; //in bytes :)
+/// The size of ram in bytes
+const RAM_SIZE: usize = 4096;
+/// How many cycles the cpu advances for every frame. This decides how fast the cpu will run
 const CYCLES_PER_FRAME: usize = 5;
 
 ///The ram of the chip8 cpu, uses big endian, and is laid out in the following way:
@@ -19,6 +22,7 @@ struct RAM {
     bytes: [u8; RAM_SIZE],
 }
 impl RAM {
+    /// Returns the ram with the fontset already loaded
     fn with_fonts() -> Self {
         let mut ram = Self {
             bytes: [0; RAM_SIZE],
@@ -46,7 +50,6 @@ impl RAM {
         for (idx, value) in ram.bytes[0..fontset.len()].iter_mut().enumerate() {
             *value = fontset[idx];
         }
-        println!("mom-oh-ree: {:?}", &ram);
         ram
     }
 
@@ -56,9 +59,11 @@ impl RAM {
     }
 }
 
+/// Holds the data from a chip8 file as a vec of bytes
 struct RomBuffer {
     buffer: Vec<u8>,
 }
+
 impl RomBuffer {
     fn new(file: &str) -> Self {
         let buffer: Vec<u8> = std::fs::read(file).unwrap();
@@ -66,7 +71,7 @@ impl RomBuffer {
     }
 }
 #[derive(Clone, Copy)]
-///# All 16 8 bit registers, and the 16 bit I register
+///# Holds all the registers and the sound and delay timers
 struct Registers {
     register: [u8; 16],
     vindex: u16,
@@ -116,7 +121,8 @@ impl Registers {
         self.register[register as usize] = value;
     }
 }
-
+/// 16 16-bit addresses, used to call subroutines or functions and return from them
+/// can go into 16 nested subroutines before stack overflows
 #[derive(Clone, Copy)]
 struct Stack {
     values: [u16; 16],
@@ -133,15 +139,17 @@ struct CPU {
     program_counter: u16,
     memory: RAM,
     registers: Registers,
-    stack: Stack, //stack for keeping track of where to return to after subroutine, can go into 16 nested subroutines before stackoverflow
-    stackpointer: u8, //only contains indexes to locations in the stack, so 0 through 15
+    stack: Stack,
+    /// Only contains indexes to locations in the stack, so 0 through 15
+    stackpointer: u8,
 }
 
 impl CPU {
+    /// Returns two bytes from memory at the location where the program counter currently points to
     fn fetch(&self, ram: &RAM) -> u16 {
         ram.get(self.program_counter)
     }
-
+    /// Takes two bytes, and decodes what instruction they represent
     fn decode(&self, opcode: u16) -> Instruction {
         match self.first_nibble(opcode) {
             0x0 => match self.last_byte(opcode) {
@@ -327,7 +335,7 @@ impl CPU {
             }
             //1NNN
             Instruction::JUMP { nnn } => {
-                println!("Jumping to {:?}",nnn);
+                println!("Jumping to {:?}", nnn);
                 self.program_counter = nnn;
             }
             //2NNN
@@ -513,9 +521,8 @@ impl CPU {
             }
             //fx0a
             Instruction::WaitForKeyPressed { x } => {
-                let key = CPU::u8_to_keycode(self.registers.get_register(x) & 0xf);
-                //wait for when a key is 
-                //while !is_key_down(key) {}
+                //@TODO: this part needs some work, it doesn't do anything currently
+                let _key = CPU::u8_to_keycode(self.registers.get_register(x) & 0xf);
             }
             //fx07
             Instruction::SetXToDelayTimer { x } => {
@@ -571,11 +578,10 @@ impl CPU {
             }
         }
     }
-    //returns the first 4 bits of the opcode as a byte
+    /// A nibble is 4 bits, so this returns the first 4 bits of an opcode
     fn first_nibble(&self, opcode: u16) -> u8 {
         ((opcode >> 12) & 0xF) as u8
     }
-    //returns the second 4 bits of the opcode as a byte
     fn second_nibble(&self, opcode: u16) -> u8 {
         ((opcode >> 8) & 0xf) as u8
     }
@@ -585,14 +591,17 @@ impl CPU {
     fn fourth_nibble(&self, opcode: u16) -> u8 {
         (opcode as u8) & 0xf
     }
-    //returns the last byte
-    fn last_byte(&self, code: u16) -> u8 {
-        (code & 0xff) as u8
+    /// Returns the last full byte byte of an opcode
+    fn last_byte(&self, opcode: u16) -> u8 {
+        (opcode & 0xff) as u8
     }
-    fn oxxx(&self, code: u16) -> u16 {
-        code & 0xfff
+    /// Returns the the last 12 bits of an opcode
+    fn oxxx(&self, opcode: u16) -> u16 {
+        opcode & 0xfff
     }
 
+    /// A single cpu cycle, fetches, decodes, executes opcodes and
+    /// decrements the timers if relevant. also updates the program_counter
     fn cycle(&mut self) {
         let opcode = self.fetch(&self.memory);
 
@@ -606,6 +615,7 @@ impl CPU {
         self.registers.decrement_delay_timer();
     }
 
+    /// Creates a new cpu object, with the contents of a rom file loaded in to memory
     fn new(rom: RomBuffer) -> Self {
         let mut memory = RAM::with_fonts();
         for (x, y) in rom.buffer.iter().enumerate() {
@@ -623,60 +633,157 @@ impl CPU {
     }
 }
 
-///A list of every instruction in the chip8 language
-///nnn is a hexadecimal memory address, it's 12 bits long
-///nn is a hexadecimal byte, it's 8 bits
-///n is what's called a "nibble", it's 4 bits
-///X and Y are registers
+/// A list of every instruction in the chip8 language
+/// nnn is a hexadecimal memory address, it's 12 bits long
+/// nn is a hexadecimal byte, it's 8 bits
+/// n is what's called a "nibble", it's 4 bits
+/// X and Y are registers
 enum Instruction {
-    NOOP,                 //0nnn
-    ClearScreen,          //00e0
+    /// The "no-op" instruction, this does absolutely nothing, by design.
+    NOOP, //0nnn
+    /// Turns all the pixels to off (false, in our case)
+    ClearScreen, //00e0
+    /// Sets the program counter to the last address in the stack
     ReturnFromSubroutine, //00ee
-    JUMP { nnn: u16 },    //1nnn where nnn is a 12 bit value (lowest 12 bits of the instruction)
-    AddToRegisterX { x: u8, kk: u8 },
-    CallSubroutineAtNNN { nnn: u16 },
-    LoadRegisterX { x: u8, kk: u8 }, //6xkk puts the value kk into Vx
-    LoadXOrYinX { x: u8, y: u8 },    //8xy1
-    LoadXAndYInX { x: u8, y: u8 },   //8xy2
-    LoadXXorYInX { x: u8, y: u8 },   //8xy3
-    AddYToX { x: u8, y: u8 },        //8xy4
-    SubYFromX { x: u8, y: u8 },      //8xy5
-    ShiftXRight1 { x: u8 },          //8xy6
-    ShiftXLeft1 { x: u8 },           //8xyE
-    SubXFromY { x: u8, y: u8 },      //8xy7
-    LoadRegisterXIntoY { x: u8, y: u8 }, //Stores the value of register Vy in register Vx
-    SetIndexRegister { nnn: u16 },   //ANNN set index register I to nnn
-    JumpToAddressPlusV0 { nnn: u16 }, //BNNN jump to address nnn + v0
-    SkipNextInstructionIfXIsKK { x: u8, kk: u8 }, //skips the next instruction only if the register X holds the value kk
-    SkipNextInstructionIfXIsNotKK { x: u8, kk: u8 }, //same as previous, except skips if register x does not hold value kk
-    SkipNextInstructionIfXIsY { x: u8, y: u8 },
-    SkipNextInstructionIfXIsNotY { x: u8, y: u8 },
-    SetXToRandom { x: u8, kk: u8 },  //cxkk
-    DISPLAY { x: u8, y: u8, n: u8 }, //DXYN draws a sprite at coordinate from vx and vy, of width 8 and height n
-    SkipIfVxNotPressed { x: u8 },    //exa1
-    SkipIfVxPressed { x: u8 },       //ex9e
-    WaitForKeyPressed { x: u8 },      //fx0a
-    SetXToDelayTimer { x: u8 },      //fx07
-    SetDelayTimerToX { x: u8 },      //Fx15
-    SetSoundTimerToX { x: u8 },      //fx18
-    AddXtoI { x: u8 },               //fx1e
-    SetIToSpriteX { x: u8 },         //fx29
-    LoadBCDOfX { x: u8 },            //fx33
-    Write0ThroughX { x: u8 },        //fx55
-    Load0ThroughX { x: u8 },         //fx65
+    /// Sets the program counter to whatever nnn is
+    JUMP {
+        nnn: u16,
+    }, //1nnn
+    CallSubroutineAtNNN {
+        nnn: u16,
+    }, //2nnn
+    /// Set register x to the value kk
+    LoadRegisterX {
+        x: u8,
+        kk: u8,
+    }, //6xkk
+    /// Adds the value kk to register x
+    AddToRegisterX {
+        x: u8,
+        kk: u8,
+    }, //7xnn
+    /// Sets the value of register x to the result of binary OR-ing register x and y
+    LoadXOrYinX {
+        x: u8,
+        y: u8,
+    }, //8xy1
+    /// Sets the value of register x to the result of binary AND-ing register x and y
+    LoadXAndYInX {
+        x: u8,
+        y: u8,
+    }, //8xy2
+    /// Sets the value of register x to the result of binary XOR-ing register x and y
+    LoadXXorYInX {
+        x: u8,
+        y: u8,
+    }, //8xy3
+    /// Sets the value of register x to the value of itself added to that of register y
+    AddYToX {
+        x: u8,
+        y: u8,
+    }, //8xy4
+    /// Sets the value of register x to the value of itself subtracted from that of register y, so
+    /// vx - vy
+    SubYFromX {
+        x: u8,
+        y: u8,
+    }, //8xy5
+    /// shift the value of register x one bit to the right
+    ShiftXRight1 {
+        x: u8,
+    }, //8xy6
+    /// shift the value of register x one bit to the left
+    ShiftXLeft1 {
+        x: u8,
+    }, //8xyE
+    /// Sets the value of register x to the value of register y subtracted from itself, so vy - vx
+    SubXFromY {
+        x: u8,
+        y: u8,
+    }, //8xy7
+    LoadRegisterXIntoY {
+        x: u8,
+        y: u8,
+    }, //Stores the value of register Vy in register Vx
+    SetIndexRegister {
+        nnn: u16,
+    }, //ANNN set index register I to nnn
+    JumpToAddressPlusV0 {
+        nnn: u16,
+    }, //BNNN jump to address nnn + v0
+    SkipNextInstructionIfXIsKK {
+        x: u8,
+        kk: u8,
+    }, //skips the next instruction only if the register X holds the value kk
+    SkipNextInstructionIfXIsNotKK {
+        x: u8,
+        kk: u8,
+    }, //same as previous, except skips if register x does not hold value kk
+    SkipNextInstructionIfXIsY {
+        x: u8,
+        y: u8,
+    },
+    SkipNextInstructionIfXIsNotY {
+        x: u8,
+        y: u8,
+    },
+    SetXToRandom {
+        x: u8,
+        kk: u8,
+    }, //cxkk
+    DISPLAY {
+        x: u8,
+        y: u8,
+        n: u8,
+    }, //DXYN draws a sprite at coordinate from vx and vy, of width 8 and height n
+    SkipIfVxNotPressed {
+        x: u8,
+    }, //exa1
+    SkipIfVxPressed {
+        x: u8,
+    }, //ex9e
+    WaitForKeyPressed {
+        x: u8,
+    }, //fx0a
+    SetXToDelayTimer {
+        x: u8,
+    }, //fx07
+    SetDelayTimerToX {
+        x: u8,
+    }, //Fx15
+    SetSoundTimerToX {
+        x: u8,
+    }, //fx18
+    AddXtoI {
+        x: u8,
+    }, //fx1e
+    SetIToSpriteX {
+        x: u8,
+    }, //fx29
+    LoadBCDOfX {
+        x: u8,
+    }, //fx33
+    Write0ThroughX {
+        x: u8,
+    }, //fx55
+    Load0ThroughX {
+        x: u8,
+    }, //fx65
 }
 
+///This line creates a macroquad application window with the title "chip 8 interpreter \ chippie\"
 #[macroquad::main("Chip 8 interpreter \"Chippie\" ")]
 async fn main() {
     //creating a chip8 cpu object with a rom loaded
     let b = RomBuffer::new("./pong.ch8");
     let mut c = CPU::new(b);
 
-    //used for
+    //used for displaying the screen of the chip-8 to the user
     let mut image = Image::gen_image_color(DISPLAY_WIDTH as u16, DISPLAY_HEIGHT as u16, WHITE);
     let mut buffer = vec![false; DISPLAY_WIDTH * DISPLAY_HEIGHT];
     let texture = Texture2D::from_image(&image);
     texture.set_filter(FilterMode::Nearest);
+
     let mut running = true;
 
     while running {
@@ -685,16 +792,24 @@ async fn main() {
             continue;
         }
 
+        //runs a bunch of cycles to keep everything running at a reasonable speed
         for _ in 0..=CYCLES_PER_FRAME {
             c.cycle();
         }
 
+        //do the audio stuff, if the sound timer is non-zero, BEEP! Make sure that, if thats not
+        //the case already, the audio timer (and delay timer) should be decremented at 60hz. 60HZ!!
+
+        //for
+
+        //some graphics specific things, fill the image variable with data
         clear_background(WHITE);
         for y in 0..DISPLAY_HEIGHT as i32 {
             for x in 0..DISPLAY_WIDTH as i32 {
                 buffer[y as usize * DISPLAY_WIDTH + x as usize] = c.display[y as usize][x as usize];
             }
         }
+
         for i in 0..buffer.len() {
             image.set_pixel(
                 (i % DISPLAY_WIDTH) as u32,
@@ -705,9 +820,10 @@ async fn main() {
                 },
             );
         }
-
+        //add the image to a texture
         texture.update(&image);
 
+        //show the texture to the user
         draw_texture_ex(
             &texture,
             0.0,
@@ -718,7 +834,7 @@ async fn main() {
                 ..Default::default()
             },
         );
-
+        //work on the next frame to display to the user
         next_frame().await;
     }
 }
