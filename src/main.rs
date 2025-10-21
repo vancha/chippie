@@ -18,17 +18,45 @@ const CYCLES_PER_FRAME: usize = 5;
 ///0x600 start of eti 660 chip8 programs
 ///0xfff end of chip8 ram
 #[derive(Debug, Copy, Clone)]
-struct RAM {
+struct Ram {
     bytes: [u8; RAM_SIZE],
 }
-impl RAM {
+impl Ram {
     /// Returns the ram with the fontset already loaded
     fn with_fonts() -> Self {
         let mut ram = Self {
             bytes: [0; RAM_SIZE],
         };
-
-        let fontset = vec![
+        // The fontset
+        // this is basically a collection of bytes that make up numbers when in binary
+        // to understand them, write them out in binary and put each value below the previous one
+        // here are the first bytes F0 90 90 90 f0, placing bytes below one another looks like
+        //
+        // 1111
+        // 1001
+        // 1001
+        // 1001
+        // 1111
+        //
+        // To make that somewhat clearer to read, lets omit the ones:
+        //
+        // 1111
+        // 1  1
+        // 1  1
+        // 1  1
+        // 1111
+        //
+        // The zeros are "off" and the ones are "on", this makes the number zero.
+        // Guess what the second row of bytes represents:
+        //
+        //   1
+        //  11
+        //   1
+        //   1
+        //  111
+        //
+        //  its a one.. This is how the fonts in the chip8 are stored
+        let fontset = [
             0xF0, 0x90, 0x90, 0x90, 0xF0, //0
             0x20, 0x60, 0x20, 0x20, 0x70, //1
             0xF0, 0x10, 0xF0, 0x80, 0xF0, //2
@@ -44,8 +72,8 @@ impl RAM {
             0xF0, 0x80, 0x80, 0x80, 0xF0, //c
             0xE0, 0x90, 0x90, 0x90, 0xE0, //d
             0xF0, 0x80, 0xF0, 0x80, 0xF0, //e
-            0xF0, 0x80, 0xF0, 0x80, 0x80, //f
-        ];
+            0xF0, 0x80, 0xF0, 0x80, 0x80,
+        ]; //f
 
         for (idx, value) in ram.bytes[0..fontset.len()].iter_mut().enumerate() {
             *value = fontset[idx];
@@ -67,7 +95,7 @@ struct RomBuffer {
 impl RomBuffer {
     fn new(file: &str) -> Self {
         let buffer: Vec<u8> = std::fs::read(file).unwrap();
-        RomBuffer { buffer: buffer }
+        RomBuffer { buffer }
     }
 }
 #[derive(Clone, Copy)]
@@ -75,7 +103,11 @@ impl RomBuffer {
 struct Registers {
     register: [u8; 16],
     vindex: u16,
+    /// 0 by default, unless its set to a number then it will just start decrementing by one 60 times per
+    /// second
     delay_timer: u8,
+    /// Also 0, and decremented with 60hz when set to a number like the delay timer. Except the
+    /// sound timer causes a beep when its not zero. So: quiet when 0, beeping when not 0
     sound_timer: u8,
 }
 
@@ -101,7 +133,7 @@ impl Registers {
         self.delay_timer = value;
     }
     fn get_delay_timer(&self) -> u8 {
-        return self.delay_timer;
+        self.delay_timer
     }
     fn decrement_sound_timer(&mut self) {
         if self.sound_timer > 0 {
@@ -115,7 +147,7 @@ impl Registers {
     }
 
     fn get_register(&self, register: u8) -> u8 {
-        return self.register[register as usize];
+        self.register[register as usize]
     }
     fn set_register(&mut self, register: u8, value: u8) {
         self.register[register as usize] = value;
@@ -133,20 +165,20 @@ impl Stack {
     }
 }
 
-struct CPU {
+struct Cpu {
     display: [[bool; DISPLAY_WIDTH]; DISPLAY_HEIGHT],
     ///Program counter, used to keep track of what to fetch,decode and execute from ram, initialized at 0x200
     program_counter: u16,
-    memory: RAM,
+    memory: Ram,
     registers: Registers,
     stack: Stack,
     /// Only contains indexes to locations in the stack, so 0 through 15
     stackpointer: u8,
 }
 
-impl CPU {
+impl Cpu {
     /// Returns two bytes from memory at the location where the program counter currently points to
-    fn fetch(&self, ram: &RAM) -> u16 {
+    fn fetch(&self, ram: &Ram) -> u16 {
         ram.get(self.program_counter)
     }
     /// Takes two bytes, and decodes what instruction they represent
@@ -155,9 +187,9 @@ impl CPU {
             0x0 => match self.last_byte(opcode) {
                 0xE0 => Instruction::ClearScreen,
                 0xEE => Instruction::ReturnFromSubroutine,
-                _ => Instruction::NOOP, //panic!("Unimplemented opcode: {:#04x}", opcode),
+                _ => Instruction::Noop, //panic!("Unimplemented opcode: {:#04x}", opcode),
             },
-            0x1 => Instruction::JUMP {
+            0x1 => Instruction::Jump {
                 nnn: self.oxxx(opcode),
             },
             0x2 => Instruction::CallSubroutineAtNNN {
@@ -238,7 +270,7 @@ impl CPU {
                 x: self.second_nibble(opcode),
                 kk: self.last_byte(opcode),
             },
-            0xD => Instruction::DISPLAY {
+            0xD => Instruction::Display{
                 x: self.second_nibble(opcode),
                 y: self.third_nibble(opcode),
                 n: self.fourth_nibble(opcode),
@@ -319,7 +351,7 @@ impl CPU {
     ///definition
     fn execute(&mut self, instruction: Instruction) {
         match instruction {
-            Instruction::NOOP => {
+            Instruction::Noop => {
                 //do nothing...
             }
             //00E0
@@ -334,8 +366,7 @@ impl CPU {
                 self.program_counter = self.stack.values[self.stackpointer as usize];
             }
             //1NNN
-            Instruction::JUMP { nnn } => {
-                println!("Jumping to {:?}", nnn);
+            Instruction::Jump { nnn } => {
                 self.program_counter = nnn;
             }
             //2NNN
@@ -475,7 +506,7 @@ impl CPU {
                 self.registers.set_register(x, random_number & kk);
             }
             //DXYN
-            Instruction::DISPLAY { x, y, n } => {
+            Instruction::Display { x, y, n } => {
                 //drawing at (start_x, start_y) on the display, wraps around if out of bounds
                 let start_x = (self.registers.get_register(x) % DISPLAY_WIDTH as u8) as usize;
                 let start_y = (self.registers.get_register(y) % DISPLAY_HEIGHT as u8) as usize;
@@ -489,7 +520,7 @@ impl CPU {
                         return;
                     }
                     let sprite = self.memory.bytes[sprite_start + sprite_row];
-                    for sprite_column in 0..8 as usize {
+                    for sprite_column in 0..8usize {
                         let pixel_row = start_x + sprite_column;
                         let pixel_column = start_y + sprite_row;
 
@@ -507,14 +538,14 @@ impl CPU {
             }
             //exa1
             Instruction::SkipIfVxNotPressed { x } => {
-                let key = CPU::u8_to_keycode(self.registers.get_register(x) & 0xf);
+                let key = Cpu::u8_to_keycode(self.registers.get_register(x) & 0xf);
                 if !is_key_down(key) {
                     self.program_counter += 2;
                 }
             }
             //ex9e
             Instruction::SkipIfVxPressed { x } => {
-                let key = CPU::u8_to_keycode(self.registers.get_register(x) & 0xf);
+                let key = Cpu::u8_to_keycode(self.registers.get_register(x) & 0xf);
                 if is_key_down(key) {
                     self.program_counter += 2;
                 }
@@ -522,7 +553,7 @@ impl CPU {
             //fx0a
             Instruction::WaitForKeyPressed { x } => {
                 //@TODO: this part needs some work, it doesn't do anything currently
-                let _key = CPU::u8_to_keycode(self.registers.get_register(x) & 0xf);
+                let _key = Cpu::u8_to_keycode(self.registers.get_register(x) & 0xf);
             }
             //fx07
             Instruction::SetXToDelayTimer { x } => {
@@ -548,7 +579,8 @@ impl CPU {
             }
             //fx29
             Instruction::SetIToSpriteX { x } => {
-                let vx = (self.registers.get_register(x) * 5) as u16 & 0xffff;
+                //let vx = (self.registers.get_register(x) * 5) as u16 & 0xffff;
+                let vx = (self.registers.get_register(x) * 5) as u16;
                 //the sprite at *index* x, not location x.
                 self.registers.set_index_register(vx);
             }
@@ -617,17 +649,23 @@ impl CPU {
 
     /// Creates a new cpu object, with the contents of a rom file loaded in to memory
     fn new(rom: RomBuffer) -> Self {
-        let mut memory = RAM::with_fonts();
+        let display = [[false; DISPLAY_WIDTH]; DISPLAY_HEIGHT];
+        let program_counter = 0x200;
+        let registers = Registers::new();
+
+        let mut memory = Ram::with_fonts();
         for (x, y) in rom.buffer.iter().enumerate() {
             memory.bytes[0x200 + x] = *y;
         }
 
+        let stack = Stack::new();
+
         Self {
-            display: [[false; DISPLAY_WIDTH]; DISPLAY_HEIGHT],
-            program_counter: 0x200,
-            registers: Registers::new(),
-            memory: memory,
-            stack: Stack::new(),
+            display,
+            program_counter,
+            registers,
+            memory,
+            stack,
             stackpointer: 0,
         }
     }
@@ -640,13 +678,13 @@ impl CPU {
 /// X and Y are registers
 enum Instruction {
     /// The "no-op" instruction, this does absolutely nothing, by design.
-    NOOP, //0nnn
+    Noop, //0nnn
     /// Turns all the pixels to off (false, in our case)
     ClearScreen, //00e0
     /// Sets the program counter to the last address in the stack
     ReturnFromSubroutine, //00ee
     /// Sets the program counter to whatever nnn is
-    JUMP {
+    Jump {
         nnn: u16,
     }, //1nnn
     CallSubroutineAtNNN {
@@ -731,7 +769,7 @@ enum Instruction {
         x: u8,
         kk: u8,
     }, //cxkk
-    DISPLAY {
+    Display {
         x: u8,
         y: u8,
         n: u8,
@@ -776,7 +814,7 @@ enum Instruction {
 async fn main() {
     //creating a chip8 cpu object with a rom loaded
     let b = RomBuffer::new("./pong.ch8");
-    let mut c = CPU::new(b);
+    let mut c = Cpu::new(b);
 
     //used for displaying the screen of the chip-8 to the user
     let mut image = Image::gen_image_color(DISPLAY_WIDTH as u16, DISPLAY_HEIGHT as u16, WHITE);
@@ -800,7 +838,7 @@ async fn main() {
         //do the audio stuff, if the sound timer is non-zero, BEEP! Make sure that, if thats not
         //the case already, the audio timer (and delay timer) should be decremented at 60hz. 60HZ!!
 
-        //for
+        //@TODO: the actual audio stuff
 
         //some graphics specific things, fill the image variable with data
         clear_background(WHITE);
@@ -810,11 +848,11 @@ async fn main() {
             }
         }
 
-        for i in 0..buffer.len() {
+        for (i,_) in buffer.iter().enumerate() {
             image.set_pixel(
                 (i % DISPLAY_WIDTH) as u32,
                 (i / DISPLAY_WIDTH) as u32,
-                match buffer[i as usize] {
+                match buffer[i] {
                     true => BLACK,
                     false => WHITE,
                 },
