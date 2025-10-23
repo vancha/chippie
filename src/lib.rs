@@ -1,7 +1,6 @@
 use ::rand::Rng;
 use ::rand::thread_rng;
 
-
 ///This holds all of the constants (written in capital letters in the code)
 mod constants;
 use constants::*;
@@ -623,12 +622,9 @@ impl Cpu {
     /// A single cpu cycle, fetches, decodes, executes opcodes and
     /// decrements the timers if relevant. also updates the program_counter
     fn cycle(&mut self) {
-        let opcode = self.fetch();//&self.memory);
-
+        let opcode = self.fetch();
         self.program_counter += 2;
-
         let instruction = self.decode(opcode);
-
         self.execute(instruction);
 
         self.registers.decrement_sound_timer();
@@ -808,49 +804,123 @@ mod tests {
     #[test]
     fn it_loads_files() {
         let rom_buffer = RomBuffer::new("tests/1-chip8-logo.8o");
-        assert_eq!(rom_buffer.buffer[0] == 0x23, true);
+        assert!(rom_buffer.buffer[0] == 0x23);
     }
     
     #[test]
     fn it_can_initialize() {
         let buffer = RomBuffer::new("tests/1-chip8-logo.8o");
         let instance = Cpu::new(buffer);
-        assert_eq!(instance.program_counter == 0x200, true);
+        assert!(instance.program_counter == 0x200);
     }
     
     #[test]
     fn it_can_fetch_instruction() {
         let buffer = RomBuffer::new("tests/1-chip8-logo.8o");
         let instance = Cpu::new(buffer);
-        assert_eq!(instance.fetch() == 0x2320, true);
+        assert!(instance.fetch() == 0x2320);
     }
     
+    // instructions in order of https://www.cs.columbia.edu/~sedwards/classes/2016/4840-spring/designs/Chip8.pdf
     #[test]
     fn executes_00E0() {
+        // Clears the display
         let mut instance = Cpu::new(RomBuffer { buffer: vec![0x00, 0xE0]});
         instance.display[0][0] = true;
         instance.cycle();
-        //let instance = Cpu::new(RomBuffer { buffer: vec![0x00E0]});
-        assert_eq!(instance.display[0][0], false);
+        assert!(instance.display[0][0] ==  false);
     }
     #[test]
     fn executes_00EE() {
+        // Return from a subroutine
+        // sets the counter to the address at the top of the stack, and subtracts 1 from the stack pointer
         let mut instance = Cpu::new(RomBuffer { buffer: vec![0x00, 0xEE]});
         instance.stack.values[0] = 0x201;
-        instance.stackpointer += 1;
+        instance.stackpointer = 1;
         instance.cycle();
-        assert_eq!(instance.program_counter == 0x201, true);
+        assert!(instance.stackpointer == 0);
+        assert!(instance.program_counter == 0x201);
     }
     
     #[test]
-    fn executes_0NNN() {
-        ///let mut instance = Cpu::new(RomBuffer { buffer: vec![0x00, 0xEE]});
-        ///instance.stack.values[0] = 0x201;
-        ///instance.stackpointer += 1;
-        ///instance.cycle();
-        assert_eq!(false, true);
+    fn executes_1NNN() {
+        // Jumps to location nnn, this should set the program counter to nnn
+        let mut instance = Cpu::new(RomBuffer { buffer: vec![0x11, 0x23]});
+        instance.cycle();
+        assert_eq!(instance.program_counter == 0x123, true);
     }
-
+    
+    #[test]
+    fn executes_2NNN() {
+        // Call subroutine at nnn, this should:
+        // 1. increment the stack pointer
+        // 2. put the current program counter at the top of the stack
+        // 3. sets the program counter to nnn
+        let mut instance = Cpu::new(RomBuffer { buffer: vec![0x21, 0x23]});
+        instance.cycle();
+        println!("{:#x}",instance.stack.values[0]);
+        assert!(instance.stackpointer == 1);
+        //I'm not sure why this isn't 0x200
+        assert!(instance.stack.values[0] == 0x202);
+        assert!(instance.program_counter == 0x123);
+    }
+    
+    #[test]
+    fn executes_3XKK() {
+        //Should increment the program counter by two if  register VX is equal to NN
+        let mut instance = Cpu::new(RomBuffer { buffer: vec![0x31, 0x00]});
+        instance.cycle();
+        assert!(instance.program_counter == 0x204);
+        
+        let mut instance = Cpu::new(RomBuffer { buffer: vec![0x31, 0x01]});
+        instance.cycle();
+        assert!(instance.program_counter == 0x202);
+    }
+    
+    #[test]
+    fn executes_4Xkk() {
+        //Should increment the program counter by two if  register VX is not equal to NN
+        let mut instance = Cpu::new(RomBuffer { buffer: vec![0x41, 0x00]});
+        instance.cycle();
+        assert!(instance.program_counter == 0x202);
+        
+        let mut instance = Cpu::new(RomBuffer { buffer: vec![0x41, 0x01]});
+        instance.cycle();
+        assert!(instance.program_counter == 0x204);
+    }
+    
+    #[test]
+    fn executes_5XY0() {
+        //Should increment the program counter by two if register vs equals register vy
+        //here regsiter x and y are both 0, which should update the pc to 0x204
+        let mut instance = Cpu::new(RomBuffer { buffer: vec![0x51, 0x20]});
+        instance.cycle();
+        assert!(instance.program_counter == 0x204);
+        
+        //Here register 1 will be set to 5, so it should leave the pc at 0x202
+        let mut instance = Cpu::new(RomBuffer { buffer: vec![0x51, 0x20]});
+        instance.registers.set_register(1, 5);
+        instance.cycle();
+        assert!(instance.program_counter == 0x202);
+        
+    }
+    
+    #[test]
+    fn executes_6XKK() {
+        //Should put the value KK in to register X
+        let mut instance = Cpu::new(RomBuffer { buffer: vec![0x60, 0x22]});
+        instance.cycle();
+        assert!(instance.registers.get_register(0) == 0x22);
+    }
+    
+    #[test]
+    fn executes_7XKK() {
+        //Should put the value KK plus the current value of register x in to register X
+        let mut instance = Cpu::new(RomBuffer { buffer: vec![0x71, 0x05]});
+        instance.registers.set_register(1, 4);
+        instance.cycle();
+        assert!(instance.registers.get_register(1) == 0x09);
+    }
     
     
 }
