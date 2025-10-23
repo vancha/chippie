@@ -1,15 +1,10 @@
 use ::rand::Rng;
 use ::rand::thread_rng;
-use macroquad::prelude::*;
 
-/// The width of the display in pixels
-const DISPLAY_WIDTH: usize = 64;
-/// The height of the display in pixels
-const DISPLAY_HEIGHT: usize = 32;
-/// The size of ram in bytes
-const RAM_SIZE: usize = 4096;
-/// How many cycles the cpu advances for every frame. This decides how fast the cpu will run
-const CYCLES_PER_FRAME: usize = 5;
+
+///This holds all of the constants (written in capital letters in the code)
+mod constants;
+use constants::*;
 
 ///The ram of the chip8 cpu, uses big endian, and is laid out in the following way:
 ///0x000 start of chip-8 ram
@@ -169,6 +164,8 @@ struct Cpu {
     display: [[bool; DISPLAY_WIDTH]; DISPLAY_HEIGHT],
     ///Program counter, used to keep track of what to fetch,decode and execute from ram, initialized at 0x200
     program_counter: u16,
+    /// A list of "buttons", for the keyboard. set to true when pressed, false otherwise
+    keyboard: [bool; 16],
     memory: Ram,
     registers: Registers,
     stack: Stack,
@@ -178,8 +175,8 @@ struct Cpu {
 
 impl Cpu {
     /// Returns two bytes from memory at the location where the program counter currently points to
-    fn fetch(&self, ram: &Ram) -> u16 {
-        ram.get(self.program_counter)
+    fn fetch(&self) -> u16 { //, ram: &Ram) -> u16 {
+        self.memory.get(self.program_counter)
     }
     /// Takes two bytes, and decodes what instruction they represent
     fn decode(&self, opcode: u16) -> Instruction {
@@ -323,29 +320,7 @@ impl Cpu {
             }
         }
     }
-    fn u8_to_keycode(code: u8) -> macroquad::input::KeyCode {
-        match code {
-            0x0 => macroquad::input::KeyCode::X,
-            0x1 => macroquad::input::KeyCode::Key1,
-            0x2 => macroquad::input::KeyCode::Key2,
-            0x3 => macroquad::input::KeyCode::Key3,
-            0x4 => macroquad::input::KeyCode::Q,
-            0x5 => macroquad::input::KeyCode::W,
-            0x6 => macroquad::input::KeyCode::E,
-            0x7 => macroquad::input::KeyCode::A,
-            0x8 => macroquad::input::KeyCode::S,
-            0x9 => macroquad::input::KeyCode::D,
-            0xa => macroquad::input::KeyCode::Z,
-            0xb => macroquad::input::KeyCode::C,
-            0xc => macroquad::input::KeyCode::Key3,
-            0xd => macroquad::input::KeyCode::R,
-            0xe => macroquad::input::KeyCode::F,
-            0xf => macroquad::input::KeyCode::V,
-            _ => {
-                panic!("Invalid keycode");
-            }
-        }
-    }
+
 
     ///Execute the instruction, for details on the instruction, check the instruction enum
     ///definition
@@ -538,22 +513,32 @@ impl Cpu {
             }
             //exa1
             Instruction::SkipIfVxNotPressed { x } => {
-                let key = Cpu::u8_to_keycode(self.registers.get_register(x) & 0xf);
-                if !is_key_down(key) {
+                //let key = Cpu::u8_to_keycode(self.registers.get_register(x) & 0xf);
+                if !self.keyboard[x as usize] { 
                     self.program_counter += 2;
                 }
+                //if !is_key_down(key) {
+                    
+                //}
             }
             //ex9e
             Instruction::SkipIfVxPressed { x } => {
-                let key = Cpu::u8_to_keycode(self.registers.get_register(x) & 0xf);
-                if is_key_down(key) {
+                //let key = Cpu::u8_to_keycode(self.registers.get_register(x) & 0xf);
+                
+                if self.keyboard[x as usize] {
                     self.program_counter += 2;
                 }
             }
             //fx0a
             Instruction::WaitForKeyPressed { x } => {
-                //@TODO: this part needs some work, it doesn't do anything currently
-                let _key = Cpu::u8_to_keycode(self.registers.get_register(x) & 0xf);
+                match self.get_pressed_key() {
+                    //Do not advance the program counter, the entire system must wait for a key to be pressed
+                    None => { self.program_counter -= 2},
+                    //Original cosmac vip only registered a kley when it was pressed *and* released
+                    Some(x) => {
+                        
+                    },
+                }
             }
             //fx07
             Instruction::SetXToDelayTimer { x } => {
@@ -631,11 +616,14 @@ impl Cpu {
     fn oxxx(&self, opcode: u16) -> u16 {
         opcode & 0xfff
     }
-
+    
+    fn get_pressed_key(&self) -> Option<usize> {
+        self.keyboard.into_iter().position(|button_pressed| *button_pressed == true)
+    }
     /// A single cpu cycle, fetches, decodes, executes opcodes and
     /// decrements the timers if relevant. also updates the program_counter
     fn cycle(&mut self) {
-        let opcode = self.fetch(&self.memory);
+        let opcode = self.fetch();//&self.memory);
 
         self.program_counter += 2;
 
@@ -652,7 +640,7 @@ impl Cpu {
         let display = [[false; DISPLAY_WIDTH]; DISPLAY_HEIGHT];
         let program_counter = 0x200;
         let registers = Registers::new();
-
+        let keyboard = [false;16];
         let mut memory = Ram::with_fonts();
         for (x, y) in rom.buffer.iter().enumerate() {
             memory.bytes[0x200 + x] = *y;
@@ -664,6 +652,7 @@ impl Cpu {
             display,
             program_counter,
             registers,
+            keyboard,
             memory,
             stack,
             stackpointer: 0,
@@ -676,6 +665,7 @@ impl Cpu {
 /// nn is a hexadecimal byte, it's 8 bits
 /// n is what's called a "nibble", it's 4 bits
 /// X and Y are registers
+#[derive(Debug,PartialEq)]
 enum Instruction {
     /// The "no-op" instruction, this does absolutely nothing, by design.
     Noop, //0nnn
@@ -809,71 +799,58 @@ enum Instruction {
     }, //fx65
 }
 
-///This line creates a macroquad application window with the title "chip 8 interpreter \ chippie\"
-#[macroquad::main("Chip 8 interpreter \"Chippie\" ")]
-async fn main() {
-    //creating a chip8 cpu object with a rom loaded
-    let b = RomBuffer::new("./tests/1-chip8-logo.ch8");
-    let mut c = Cpu::new(b);
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::path::PathBuf;
 
-    //used for displaying the screen of the chip-8 to the user
-    let mut image = Image::gen_image_color(DISPLAY_WIDTH as u16, DISPLAY_HEIGHT as u16, WHITE);
-    let mut buffer = vec![false; DISPLAY_WIDTH * DISPLAY_HEIGHT];
-    let texture = Texture2D::from_image(&image);
-    texture.set_filter(FilterMode::Nearest);
-
-    let mut running = true;
-
-    while running {
-        if is_key_pressed(KeyCode::Escape) {
-            running = false;
-            continue;
-        }
-
-        //runs a bunch of cycles to keep everything running at a reasonable speed
-        for _ in 0..=CYCLES_PER_FRAME {
-            c.cycle();
-        }
-
-        //do the audio stuff, if the sound timer is non-zero, BEEP! Make sure that, if thats not
-        //the case already, the audio timer (and delay timer) should be decremented at 60hz. 60HZ!!
-
-        //@TODO: the actual audio stuff
-
-        //some graphics specific things, fill the image variable with data
-        clear_background(WHITE);
-        for y in 0..DISPLAY_HEIGHT as i32 {
-            for x in 0..DISPLAY_WIDTH as i32 {
-                buffer[y as usize * DISPLAY_WIDTH + x as usize] = c.display[y as usize][x as usize];
-            }
-        }
-
-        for (i,_) in buffer.iter().enumerate() {
-            image.set_pixel(
-                (i % DISPLAY_WIDTH) as u32,
-                (i / DISPLAY_WIDTH) as u32,
-                match buffer[i] {
-                    true => BLACK,
-                    false => WHITE,
-                },
-            );
-        }
-        //add the image to a texture
-        texture.update(&image);
-
-        //show the texture to the user
-        draw_texture_ex(
-            &texture,
-            0.0,
-            0.0,
-            WHITE,
-            DrawTextureParams {
-                dest_size: Some(vec2(screen_width(), screen_height())),
-                ..Default::default()
-            },
-        );
-        //work on the next frame to display to the user
-        next_frame().await;
+    #[test]
+    fn it_loads_files() {
+        let rom_buffer = RomBuffer::new("tests/1-chip8-logo.8o");
+        assert_eq!(rom_buffer.buffer[0] == 0x23, true);
     }
-}
+    
+    #[test]
+    fn it_can_initialize() {
+        let buffer = RomBuffer::new("tests/1-chip8-logo.8o");
+        let instance = Cpu::new(buffer);
+        assert_eq!(instance.program_counter == 0x200, true);
+    }
+    
+    #[test]
+    fn it_can_fetch_instruction() {
+        let buffer = RomBuffer::new("tests/1-chip8-logo.8o");
+        let instance = Cpu::new(buffer);
+        assert_eq!(instance.fetch() == 0x2320, true);
+    }
+    
+    #[test]
+    fn executes_00E0() {
+        let mut instance = Cpu::new(RomBuffer { buffer: vec![0x00, 0xE0]});
+        instance.display[0][0] = true;
+        instance.cycle();
+        //let instance = Cpu::new(RomBuffer { buffer: vec![0x00E0]});
+        assert_eq!(instance.display[0][0], false);
+    }
+    #[test]
+    fn executes_00EE() {
+        let mut instance = Cpu::new(RomBuffer { buffer: vec![0x00, 0xEE]});
+        instance.stack.values[0] = 0x201;
+        instance.stackpointer += 1;
+        instance.cycle();
+        assert_eq!(instance.program_counter == 0x201, true);
+    }
+    
+    #[test]
+    fn executes_0NNN() {
+        ///let mut instance = Cpu::new(RomBuffer { buffer: vec![0x00, 0xEE]});
+        ///instance.stack.values[0] = 0x201;
+        ///instance.stackpointer += 1;
+        ///instance.cycle();
+        assert_eq!(false, true);
+    }
 
+    
+    
+}
