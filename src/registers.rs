@@ -21,7 +21,7 @@ impl Registers {
         }
     }
     pub fn set_index_register(&mut self, value: u16) {
-        self.vindex = value;
+        self.vindex = value & 0xffff;
     }
     pub fn get_index_register(&self) -> u16 {
         self.vindex

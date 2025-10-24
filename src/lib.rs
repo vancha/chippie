@@ -6,6 +6,5 @@ pub mod cpu;
 mod instruction;
 mod ram;
 mod registers;
-mod rombuffer;
+pub mod rombuffer;
 mod stack;
-use crate::{cpu::*, instruction::*, ram::*, rombuffer::*, stack::*};

@@ -1,16 +1,17 @@
-use ::rand::Rng;
-use ::rand::thread_rng;
+//use ::rand::Rng;
+//use ::rand::thread_rng;
 use chip8_emulator::cpu::Cpu;
 use macroquad::prelude::*;
 mod constants;
 use crate::constants::{CYCLES_PER_FRAME, DISPLAY_HEIGHT, DISPLAY_WIDTH};
+use chip8_emulator::rombuffer::{ RomBuffer };
 
 ///This line creates a macroquad application window with the title "chip 8 interpreter \ chippie\"
 #[macroquad::main("Chip 8 interpreter \"Chippie\" ")]
 async fn main() {
     //creating a chip8 cpu object with a rom loaded
-    //let b = RomBuffer::new("./tests/1-chip8-logo.ch8");
-    let mut c = Cpu::new("./tests/1-chip8-logo.ch8");
+    let b = RomBuffer::new("tests/ibmlogo.ch8");
+    let mut c = Cpu::new(b);
 
     //used for displaying the screen of the chip-8 to the user
     let mut image = Image::gen_image_color(DISPLAY_WIDTH as u16, DISPLAY_HEIGHT as u16, WHITE);
@@ -44,6 +45,7 @@ async fn main() {
                     c.get_display_contents()[y as usize][x as usize];
             }
         }
+        //println!("{:?}",c.get_display_contents());
 
         for (i, _) in buffer.iter().enumerate() {
             image.set_pixel(
