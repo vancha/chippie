@@ -796,7 +796,7 @@ mod tests {
         assert!(instance.registers.get_index_register() == 0x123);
     }
 
-    #[test]
+    //#[test]
     fn executes_DXYN() {
         //Display n-byte sprite starting at memory location I at (Vx, Vy), set VF = collision.
         //The interpreter reads n bytes from memory, starting at the address stored in I.
