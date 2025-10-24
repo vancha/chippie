@@ -476,7 +476,7 @@ impl Cpu {
                 let vi = self.registers.get_index_register();
                 for i in 0..x + 1 {
                     self.registers
-                        .set_register(i, self.memory.get_opcode(vi + i as u16) as u8);
+                        .set_register(i, self.memory.get_byte(vi + i as u16));
                 }
             }
         }
@@ -806,16 +806,14 @@ mod tests {
         //If the sprite is positioned so part of it is outside the coordinates of the display, it wraps around to the opposite side of the screen.
         //See instruction 8xy3 for more information on XOR, and section 2.4, Display, for more information on the Chip-8 screen and sprites.
 
-
-
         //0xD123 should make a 3-byte tall sprite sprite (n == 3)
-        let mut instance = Cpu::new( RomBuffer::from_bytes( vec![0xD1, 0x23, 0xff, 0xff, 0xff, 0xff] ) );
+        let mut instance = Cpu::new( RomBuffer::from_bytes( vec![0xD1, 0x23, 0x00, 0x00, 0x00, 0x00] ) );
         //this should set both x and y to 5
         instance.registers.set_register(1, 2);
         instance.registers.set_register(2, 2);
 
-        //the sprite at location 0x06 should be 0x0101, i think??
-        instance.registers.set_index_register(0x2);
+        //sprite data starts at
+        instance.registers.set_index_register(4);
 
         instance.cycle();
         for row in instance.get_display_contents() {
@@ -831,7 +829,5 @@ mod tests {
 
         //println!("{:?}",instance.get_display_contents());
         assert!(instance.registers.get_index_register() == 0x123);
-
     }
-
 }
