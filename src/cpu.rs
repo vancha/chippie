@@ -4,8 +4,8 @@ use crate::ram::*;
 use crate::registers::*;
 use crate::rombuffer::*;
 use crate::stack::*;
-use rand::Rng;
-use rand::thread_rng;
+use rand::{Rng, SeedableRng};
+use rand_chacha::ChaCha8Rng;
 
 #[derive(Default)]
 struct Quirks {
@@ -24,6 +24,7 @@ pub struct Cpu {
     /// A list of "buttons", for the keyboard. set to true when pressed, false otherwise
     keyboard: [bool; 16],
     memory: Ram,
+    rng: ChaCha8Rng,
     quirks: Quirks,
     registers: Registers,
     stack: Stack,
@@ -182,7 +183,7 @@ impl Cpu {
     ///Execute the instruction, for details on the instruction, check the instruction enum
     ///definition
     fn execute(&mut self, instruction: Instruction) {
-        println!("instruction: {:?}",instruction);
+        println!("instruction: {:?}", instruction);
         match instruction {
             Instruction::Noop => {
                 //do nothing...
@@ -300,7 +301,7 @@ impl Cpu {
             Instruction::ShiftXLeft1 { x } => {
                 let vx = self.registers.get_register(x);
                 let fv = (vx as u16 >> 7) & 1;
-                println!("VF is {}",fv);
+                println!("VF is {}", fv);
                 let res = self.registers.get_register(x).wrapping_shl(1);
 
                 self.registers.set_register(x, res);
@@ -335,12 +336,11 @@ impl Cpu {
             }
             //cxkk
             Instruction::SetXToRandom { x, kk } => {
-                let mut rng = thread_rng();
-                let random_number = rng.gen_range(0..=255);
-                self.registers.set_register(x, random_number & kk);
+                let random_byte: u8 = self.rng.random();
+                self.registers.set_register(x, random_byte & kk);
             }
-            /*
-             Instruction::Display { x, y, n } => {
+            //DXYN
+            Instruction::Display { x, y, n } => {
                 //drawing at (start_x, start_y) on the display, wraps around if out of bounds
                 let start_x = (self.registers.get_register(x) % DISPLAY_WIDTH as u8) as usize;
                 let start_y = (self.registers.get_register(y) % DISPLAY_HEIGHT as u8) as usize;
@@ -353,41 +353,9 @@ impl Cpu {
                     if sprite_start + sprite_row >= RAM_SIZE {
                         return;
                     }
-                    let sprite = self.memory.bytes[sprite_start + sprite_row];
-                    for sprite_column in 0..8 as usize {
-                        let pixel_row = start_x + sprite_column;
-                        let pixel_column = start_y + sprite_row;
-
-                        let sprite_pixel_set = sprite >> (7 - sprite_column) & 1 == 1;
-
-                        //check so as to *not* draw out of bounds of the display
-                        if pixel_row < DISPLAY_WIDTH && pixel_column < DISPLAY_HEIGHT {
-                            if self.display[pixel_column][pixel_row] && sprite_pixel_set {
-                                self.registers.set_register(0xf, 1);
-                            }
-                            self.display[pixel_column][pixel_row] ^= sprite_pixel_set;
-                        }
-                    }
-                }
-            }
-            */
-            //DXYN
-            Instruction::Display { x, y, n } => {
-                //drawing at (start_x, start_y) on the display, wraps around if out of bounds
-                let start_x = (self.registers.get_register(x) % DISPLAY_WIDTH as u8) as usize;
-                let start_y = (self.registers.get_register(y) % DISPLAY_HEIGHT as u8) as usize;
-                
-                let sprite_start = self.registers.get_index_register() as usize;
-                self.registers.set_register(0xF, 0);
-
-                //move over all rows of the sprite (it has n rows)
-                for sprite_row in 0..n  as usize {
-                    if sprite_start + sprite_row >= RAM_SIZE {
-                        return;
-                    }
-                    let sprite = self.memory.bytes[sprite_start + sprite_row];//bytes[sprite_start + sprite_row];
-                    //what is the sprite?
-                    println!("The sprite is {:#b}",sprite);
+                    let sprite = self.memory.bytes[sprite_start + sprite_row]; //bytes[sprite_start + sprite_row];
+                                                                               //what is the sprite?
+                    println!("The sprite is {:#b}", sprite);
                     for sprite_column in 0..8 {
                         let pixel_row = start_x + sprite_column;
                         let pixel_column = start_y + sprite_row;
@@ -395,11 +363,16 @@ impl Cpu {
                         let sprite_pixel_set = sprite >> (7 - sprite_column) & 1 == 1;
 
                         //check so as to *not* draw out of bounds of the display
-                        if pixel_row < (DISPLAY_WIDTH as u16).into() && (pixel_column as u16) < (DISPLAY_HEIGHT as u16)  {
-                            if self.display[pixel_column as usize][pixel_row as usize] && sprite_pixel_set {
+                        if pixel_row < (DISPLAY_WIDTH as u16).into()
+                            && (pixel_column as u16) < (DISPLAY_HEIGHT as u16)
+                        {
+                            if self.display[pixel_column as usize][pixel_row as usize]
+                                && sprite_pixel_set
+                            {
                                 self.registers.set_register(0xf, 1);
                             }
-                            self.display[pixel_column as usize][pixel_row as usize] ^= sprite_pixel_set;
+                            self.display[pixel_column as usize][pixel_row as usize] ^=
+                                sprite_pixel_set;
                         }
                     }
                 }
@@ -510,6 +483,13 @@ impl Cpu {
             .position(|button_pressed| *button_pressed)
     }
 
+    //this should be part of an interface somehow, maybe a trait that lets external programs set the keys for the emulator
+    fn set_pressed_key(&mut self, key: u8) {
+        if !self.keyboard[key] {
+            self.keyboard[key] = true;
+        }
+    }
+
     pub fn get_display_contents(&self) -> [[bool; DISPLAY_WIDTH]; DISPLAY_HEIGHT] {
         self.display
     }
@@ -533,6 +513,7 @@ impl Cpu {
         let registers = Registers::new();
         let keyboard = [false; 16];
         let quirks = Quirks::default();
+        let mut rng = ChaCha8Rng::seed_from_u64(2);
         let mut memory = Ram::with_fonts();
         for (x, y) in rom.contents().iter().enumerate() {
             memory.set(0x200 + x as u16, *y);
@@ -546,13 +527,13 @@ impl Cpu {
             registers,
             keyboard,
             quirks,
+            rng,
             memory,
             stack,
             stackpointer: 0,
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -588,7 +569,7 @@ mod tests {
         // Return from a subroutine
         // sets the counter to the address at the top of the stack, and subtracts 1 from the stack pointer
         let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0x00, 0xEE]));
-        instance.stack.set(0,0x201);
+        instance.stack.set(0, 0x201);
         instance.stackpointer = 1;
         instance.cycle();
         assert!(instance.stackpointer == 0);
@@ -721,7 +702,7 @@ mod tests {
         //Should store the value of register y ADDED to whatever is in register y in to register x
         //if the value is bigger than 8 bits (i.e 255), register f should be set to 1, 0 otherwise, and only the lowest
         //8 bit of the result should be kept and stored in register x
-        let mut instance = Cpu::new(RomBuffer::from_bytes( vec![0x81, 0x24]));
+        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0x81, 0x24]));
         instance.registers.set_register(0x2, 200);
         instance.registers.set_register(0x1, 1);
         instance.cycle();
@@ -774,26 +755,26 @@ mod tests {
     fn executes_8XY7() {
         // Should store the value of register x subtracted from the value in register y, inside register x. register f is said when we didn't borrow.
         // again, opposite of what you'd expect.
-        let mut instance = Cpu::new( RomBuffer::from_bytes( vec![0x81, 0x27] ) );
+        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0x81, 0x27]));
         instance.registers.set_register(0x1, 2);
         instance.registers.set_register(0x2, 10);
         instance.cycle();
         assert!(instance.registers.get_register(1) == 8);
         assert!(instance.registers.get_register(0xf) == 1);
 
-        let mut instance = Cpu::new( RomBuffer::from_bytes(vec![0x81, 0x27]) );
+        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0x81, 0x27]));
         instance.registers.set_register(0x1, 10);
         instance.registers.set_register(0x2, 2);
         instance.cycle();
         assert!(instance.registers.get_register(1) == 248);
         assert!(instance.registers.get_register(0xf) == 0);
     }
-    
+
     #[test]
     fn executes_8XYE() {
         // Set register x equal to itself shifted left by one. if msb of x is 1, then set VF. If not,
         // unset it. Afterwards, multiply the value at register x by 2. (not sure if i get that right, shl == multiply by 2)
-        let mut instance = Cpu::new( RomBuffer::from_bytes( vec![0x81, 0x2E] ) );
+        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0x81, 0x2E]));
         //the number 0xff has the most significant bit set to 1, so vf must be set when done
         instance.registers.set_register(0x1, 0xff);
         instance.cycle();
@@ -806,9 +787,34 @@ mod tests {
     #[test]
     fn executes_ANNN() {
         // Directly sets the index register to NNN
-        let mut instance = Cpu::new( RomBuffer::from_bytes( vec![0xA1, 0x23] ) );
+        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0xA1, 0x23]));
         instance.cycle();
         assert!(instance.registers.get_index_register() == 0x123);
+    }
+
+    #[test]
+    fn executes_BNNN() {
+        // Directly sets the index register to NNN
+        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0xB3, 0x00]));
+        instance.registers.set_register(0, 0x5);
+        instance.cycle();
+        assert!(instance.program_counter == 0x5 + 0x300);
+    }
+
+    #[test] //This test is disabled because i have no idea how to test random numbers
+    fn executes_CXKK() {
+        // Set Vx = random byte AND kk. The interpreter generates a random number from 0 to 255, which is then
+        // ANDed with the value kk. The results are stored in Vx. See instruction 8xy2 for more information on AND
+        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0xC0, 0xff]));
+        instance.cycle();
+        let random_number =  instance.registers.get_register(0);
+        assert_eq!(random_number, 197);
+
+        //here the ANDed number is 0, so the result is zero too
+        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0xC0, 0x00]));
+        instance.cycle();
+        let random_number =  instance.registers.get_register(0);
+        assert_eq!(random_number, 0);
     }
 
     #[test]
@@ -822,20 +828,37 @@ mod tests {
         //See instruction 8xy3 for more information on XOR, and section 2.4, Display, for more information on the Chip-8 screen and sprites.
 
         //0xD123 should make a 1-byte tall sprite sprite (n == 1), (x == 1 and y == 2)
-        let mut instance = Cpu::new( RomBuffer::from_bytes( vec![0xD1, 0x21, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff] ) );
+        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![
+            0xD1, 0x21, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff,
+        ]));
         //this should set both x and y to 2
         instance.registers.set_register(1, 2);
         instance.registers.set_register(2, 2);
 
-        //sprite data starts at (keep in mind program data starts at 0x200, and locations before that are pointing at font data probably)
+        //sprite data starts at (keep in mind program data starts at 0x200, aad locations before that are pointing at font data probably)
         //this points to the ninth byte (0xff) in our rom as the start of our sprite data
         instance.registers.set_index_register(0x200 + 9);
-        
+
         //Given all this, chip8 should put 8 ones at (2,2) on the display
         instance.cycle();
         let byte_of_ones = instance.get_display_contents()[2];
         let mut what_it_should_look_like = [false; 64];
-        what_it_should_look_like[..10].copy_from_slice(&[false, false, true, true, true, true, true, true, true, true]);//this is what the second column should look like
+        what_it_should_look_like[..10]
+            .copy_from_slice(&[false, false, true, true, true, true, true, true, true, true]); //this is what the second column should look like
         assert_eq!(byte_of_ones, what_it_should_look_like);
     }
+
+    #[test]
+    fn executes_EX9E() {
+        // Skip next instruction if key with the value of Vx is pressed. Checks the keyboard, and if the key corresponding
+        // to the value of Vx is currently in the down position, PC is increased by 2.
+        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0xE0, 0x9E]));
+        instance.cycle();
+        println!("random_byte: {:?}", instance.registers.get_register(0));
+        assert!(false);
+    }
 }
+
+/*
+
+*/
