@@ -139,7 +139,7 @@ impl Cpu {
                     x: self.second_nibble(opcode),
                 },
                 _ => {
-                    panic!("unimplemented opcode: 0x{:04x}", opcode);
+                    panic!("unimplemented opcode: 0x{opcode:04x}");
                 }
             },
             0xF => match self.last_byte(opcode) {
@@ -171,11 +171,11 @@ impl Cpu {
                     x: self.second_nibble(opcode),
                 },
                 _ => {
-                    panic!("unimplemented opcode: 0x{:06x}", opcode);
+                    panic!("unimplemented opcode: 0x{opcode:06x}");
                 }
             },
             _ => {
-                panic!("cannot decode,opcode not implemented: 0x{:04x}", opcode)
+                panic!("cannot decode,opcode not implemented: {opcode:04x}")
             }
         }
     }
@@ -183,7 +183,6 @@ impl Cpu {
     ///Execute the instruction, for details on the instruction, check the instruction enum
     ///definition
     fn execute(&mut self, instruction: Instruction) {
-        println!("instruction: {:?}", instruction);
         match instruction {
             Instruction::Noop => {
                 //do nothing...
@@ -301,7 +300,6 @@ impl Cpu {
             Instruction::ShiftXLeft1 { x } => {
                 let vx = self.registers.get_register(x);
                 let fv = (vx as u16 >> 7) & 1;
-                println!("VF is {}", fv);
                 let res = self.registers.get_register(x).wrapping_shl(1);
 
                 self.registers.set_register(x, res);
@@ -354,8 +352,7 @@ impl Cpu {
                         return;
                     }
                     let sprite = self.memory.bytes[sprite_start + sprite_row]; //bytes[sprite_start + sprite_row];
-                                                                               //what is the sprite?
-                    println!("The sprite is {:#b}", sprite);
+                    //what is the sprite?
                     for sprite_column in 0..8 {
                         let pixel_row = start_x + sprite_column;
                         let pixel_column = start_y + sprite_row;
@@ -366,13 +363,10 @@ impl Cpu {
                         if pixel_row < (DISPLAY_WIDTH as u16).into()
                             && (pixel_column as u16) < (DISPLAY_HEIGHT as u16)
                         {
-                            if self.display[pixel_column as usize][pixel_row as usize]
-                                && sprite_pixel_set
-                            {
+                            if self.display[pixel_column][pixel_row] && sprite_pixel_set {
                                 self.registers.set_register(0xf, 1);
                             }
-                            self.display[pixel_column as usize][pixel_row as usize] ^=
-                                sprite_pixel_set;
+                            self.display[pixel_column][pixel_row] ^= sprite_pixel_set;
                         }
                     }
                 }
@@ -513,7 +507,7 @@ impl Cpu {
         let registers = Registers::new();
         let keyboard = [false; 16];
         let quirks = Quirks::default();
-        let mut rng = ChaCha8Rng::seed_from_u64(2);
+        let rng = ChaCha8Rng::seed_from_u64(2);
         let mut memory = Ram::with_fonts();
         for (x, y) in rom.contents().iter().enumerate() {
             memory.set(0x200 + x as u16, *y);
@@ -535,11 +529,10 @@ impl Cpu {
     }
 }
 
+#[allow(non_snake_case)]
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
-    use std::path::PathBuf;
 
     #[test]
     fn it_can_initialize() {
@@ -807,13 +800,13 @@ mod tests {
         // ANDed with the value kk. The results are stored in Vx. See instruction 8xy2 for more information on AND
         let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0xC0, 0xff]));
         instance.cycle();
-        let random_number =  instance.registers.get_register(0);
+        let random_number = instance.registers.get_register(0);
         assert_eq!(random_number, 197);
 
         //here the ANDed number is 0, so the result is zero too
         let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0xC0, 0x00]));
         instance.cycle();
-        let random_number =  instance.registers.get_register(0);
+        let random_number = instance.registers.get_register(0);
         assert_eq!(random_number, 0);
     }
 
@@ -858,7 +851,3 @@ mod tests {
         assert!(false);
     }
 }
-
-/*
-
-*/

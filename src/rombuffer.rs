@@ -6,7 +6,6 @@ pub struct RomBuffer {
 impl RomBuffer {
     pub fn new(file: &str) -> Self {
         let buffer: Vec<u8> = std::fs::read(file).unwrap();
-        println!("loaded instructions: {:02X?}",buffer);
         RomBuffer { buffer }
     }
     pub fn contents(&self) -> &[u8] {
@@ -18,12 +17,9 @@ impl RomBuffer {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
-    use std::path::PathBuf;
 
     #[test]
     fn loads_files() {

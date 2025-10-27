@@ -8,7 +8,7 @@ use crate::constants::RAM_SIZE;
 ///0xfff end of chip8 ram
 #[derive(Debug, Copy, Clone)]
 pub struct Ram {
-   pub bytes: [u8; RAM_SIZE],
+    pub bytes: [u8; RAM_SIZE],
 }
 impl Ram {
     /// Returns the ram with the fontset already loaded

@@ -1,10 +1,8 @@
-//use ::rand::Rng;
-//use ::rand::thread_rng;
 use chip8_emulator::cpu::Cpu;
 use macroquad::prelude::*;
 mod constants;
 use crate::constants::{CYCLES_PER_FRAME, DISPLAY_HEIGHT, DISPLAY_WIDTH};
-use chip8_emulator::rombuffer::{ RomBuffer };
+use chip8_emulator::rombuffer::RomBuffer;
 
 ///This line creates a macroquad application window with the title "chip 8 interpreter \ chippie\"
 #[macroquad::main("Chip 8 interpreter \"Chippie\" ")]
