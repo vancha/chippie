@@ -300,6 +300,7 @@ impl Cpu {
             Instruction::ShiftXLeft1 { x } => {
                 let vx = self.registers.get_register(x);
                 let fv = (vx as u16 >> 7) & 1;
+                println!("VF is {}",fv);
                 let res = self.registers.get_register(x).wrapping_shl(1);
 
                 self.registers.set_register(x, res);
@@ -375,7 +376,7 @@ impl Cpu {
                 //drawing at (start_x, start_y) on the display, wraps around if out of bounds
                 let start_x = (self.registers.get_register(x) % DISPLAY_WIDTH as u8) as usize;
                 let start_y = (self.registers.get_register(y) % DISPLAY_HEIGHT as u8) as usize;
-
+                
                 let sprite_start = self.registers.get_index_register() as usize;
                 self.registers.set_register(0xF, 0);
 
@@ -787,6 +788,20 @@ mod tests {
         assert!(instance.registers.get_register(1) == 248);
         assert!(instance.registers.get_register(0xf) == 0);
     }
+    
+    #[test]
+    fn executes_8XYE() {
+        // Set register x equal to itself shifted left by one. if msb of x is 1, then set VF. If not,
+        // unset it. Afterwards, multiply the value at register x by 2. (not sure if i get that right, shl == multiply by 2)
+        let mut instance = Cpu::new( RomBuffer::from_bytes( vec![0x81, 0x2E] ) );
+        //the number 0xff has the most significant bit set to 1, so vf must be set when done
+        instance.registers.set_register(0x1, 0xff);
+        instance.cycle();
+        //Check if it correctly sets vf based on the most significant bit
+        assert!(instance.registers.get_register(0xF) == 0x1);
+        //Check if it correctly calculates the result of the instruction
+        assert_eq!(instance.registers.get_register(0x1), 0xff << 1);
+    }
 
     #[test]
     fn executes_ANNN() {
@@ -796,7 +811,7 @@ mod tests {
         assert!(instance.registers.get_index_register() == 0x123);
     }
 
-    //#[test]
+    #[test]
     fn executes_DXYN() {
         //Display n-byte sprite starting at memory location I at (Vx, Vy), set VF = collision.
         //The interpreter reads n bytes from memory, starting at the address stored in I.
@@ -806,28 +821,21 @@ mod tests {
         //If the sprite is positioned so part of it is outside the coordinates of the display, it wraps around to the opposite side of the screen.
         //See instruction 8xy3 for more information on XOR, and section 2.4, Display, for more information on the Chip-8 screen and sprites.
 
-        //0xD123 should make a 3-byte tall sprite sprite (n == 3)
-        let mut instance = Cpu::new( RomBuffer::from_bytes( vec![0xD1, 0x23, 0x00, 0x00, 0x00, 0x00] ) );
-        //this should set both x and y to 5
+        //0xD123 should make a 1-byte tall sprite sprite (n == 1), (x == 1 and y == 2)
+        let mut instance = Cpu::new( RomBuffer::from_bytes( vec![0xD1, 0x21, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff] ) );
+        //this should set both x and y to 2
         instance.registers.set_register(1, 2);
         instance.registers.set_register(2, 2);
 
-        //sprite data starts at
-        instance.registers.set_index_register(4);
-
+        //sprite data starts at (keep in mind program data starts at 0x200, and locations before that are pointing at font data probably)
+        //this points to the ninth byte (0xff) in our rom as the start of our sprite data
+        instance.registers.set_index_register(0x200 + 9);
+        
+        //Given all this, chip8 should put 8 ones at (2,2) on the display
         instance.cycle();
-        for row in instance.get_display_contents() {
-            for pixel in row{
-                if pixel {
-                    print!("8");
-                } else {
-                    print!(".");
-                }
-                }
-            println!("\n");
-            }
-
-        //println!("{:?}",instance.get_display_contents());
-        assert!(instance.registers.get_index_register() == 0x123);
+        let byte_of_ones = instance.get_display_contents()[2];
+        let mut what_it_should_look_like = [false; 64];
+        what_it_should_look_like[..10].copy_from_slice(&[false, false, true, true, true, true, true, true, true, true]);//this is what the second column should look like
+        assert_eq!(byte_of_ones, what_it_should_look_like);
     }
 }
