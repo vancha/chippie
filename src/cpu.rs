@@ -1,4 +1,4 @@
-use crate::constants::{DISPLAY_HEIGHT, DISPLAY_WIDTH, RAM_SIZE};
+use crate::constants::{DISPLAY_HEIGHT, DISPLAY_WIDTH, RAM_SIZE, ROM_START_ADDRESS};
 use crate::instruction::*;
 use crate::ram::*;
 use crate::registers::*;
@@ -17,15 +17,22 @@ struct Quirks {
     vblank: bool,
     logic: bool,
 }
+
+/// The main cpu,
 pub struct Cpu {
+    /// A 2d array of booleans, representing the black and white pixels for the chip8 display
     display: [[bool; DISPLAY_WIDTH]; DISPLAY_HEIGHT],
     ///Program counter, used to keep track of what to fetch,decode and execute from ram, initialized at 0x200
     program_counter: u16,
     /// A list of "buttons", for the keyboard. set to true when pressed, false otherwise
     keyboard: [bool; 16],
+    /// The memory, stores the rom data when loaded from disk
     memory: Ram,
+    /// A random number generator. Added for testability reaons as it allows to test all random instructions with a fixed seed
     rng: ChaCha8Rng,
+    /// Used to check which quirks should be enabled or disabled
     quirks: Quirks,
+    /// Registers 0x0 through 0xF
     registers: Registers,
     stack: Stack,
     /// Only contains indexes to locations in the stack, so 0 through 15
@@ -503,17 +510,18 @@ impl Cpu {
     /// Creates a new cpu object, with the contents of a rom file loaded in to memory
     pub fn new(rom: RomBuffer) -> Self {
         let display = [[false; DISPLAY_WIDTH]; DISPLAY_HEIGHT];
-        let program_counter = 0x200;
-        let registers = Registers::new();
+        let program_counter = ROM_START_ADDRESS;
+        let registers = Registers::default();
         let keyboard = [false; 16];
         let quirks = Quirks::default();
         let rng = ChaCha8Rng::seed_from_u64(2);
         let mut memory = Ram::with_fonts();
+
         for (x, y) in rom.contents().iter().enumerate() {
-            memory.set(0x200 + x as u16, *y);
+            memory.set(ROM_START_ADDRESS + x as u16, *y);
         }
 
-        let stack = Stack::new();
+        let stack = Stack::default();
 
         Self {
             display,
@@ -538,7 +546,7 @@ mod tests {
     fn it_can_initialize() {
         let buffer = RomBuffer::new("tests/1-chip8-logo.8o");
         let instance = Cpu::new(buffer);
-        assert!(instance.program_counter == 0x200);
+        assert!(instance.program_counter == ROM_START_ADDRESS);
     }
 
     #[test]
@@ -574,7 +582,7 @@ mod tests {
         // Jumps to location nnn, this should set the program counter to nnn
         let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0x11, 0x23]));
         instance.cycle();
-        assert_eq!(instance.program_counter == 0x123, true);
+        assert_eq!(instance.program_counter, 0x123);
     }
 
     #[test]
@@ -586,7 +594,7 @@ mod tests {
         let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0x21, 0x23]));
         instance.cycle();
         assert!(instance.stackpointer == 1);
-        //I'm not sure why this isn't 0x200
+        //In a cycle the program counter gets updated before it is pushed to the stack
         assert!(instance.stack.get(0) == 0x202);
         assert!(instance.program_counter == 0x123);
     }
@@ -830,7 +838,7 @@ mod tests {
 
         //sprite data starts at (keep in mind program data starts at 0x200, aad locations before that are pointing at font data probably)
         //this points to the ninth byte (0xff) in our rom as the start of our sprite data
-        instance.registers.set_index_register(0x200 + 9);
+        instance.registers.set_index_register(ROM_START_ADDRESS + 9);
 
         //Given all this, chip8 should put 8 ones at (2,2) on the display
         instance.cycle();
@@ -841,13 +849,98 @@ mod tests {
         assert_eq!(byte_of_ones, what_it_should_look_like);
     }
 
-    //#[test]
+    #[test]
     fn executes_EX9E() {
         // Skip next instruction if key with the value of Vx is pressed. Checks the keyboard, and if the key corresponding
         // to the value of Vx is currently in the down position, PC is increased by 2.
         let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0xE0, 0x9E]));
+        // location will be 0 (since that's default value for register 0)
+        instance.keyboard[0] = true;
         instance.cycle();
-        println!("random_byte: {:?}", instance.registers.get_register(0));
-        assert!(false);
+        //should be incremented by 4 rather than two if button is down
+        assert!(instance.program_counter == 0x200 + 4);
     }
+    
+    #[test]
+    fn executes_ExA1() {
+        // Skip next instruction if key with the value of Vx is not pressed. Checks the keyboard, and if the key
+        // corresponding to the value of Vx is currently in the up position, PC is increased by 2.
+         let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0xE0, 0xA1]));
+        instance.cycle();
+        //should be incremented by 4 rather than two if button is not down
+        assert!(instance.program_counter == 0x200 + 4);
+        
+    } 
+    
+    #[test]
+    fn executes_Fx07(){
+        //Set Vx = delay timer value. The value of DT is placed into Vx.
+        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0xF0, 0x07]));
+        instance.registers.set_delay_timer( 0x10 );
+        instance.cycle();
+        //should be equal to delay timer
+        assert!(instance.registers.get_register(0x0) == 0x10);
+    }
+    
+    #[test]
+    fn executes_Fx0A(){
+        //Wait for a key press, store the value of the key in Vx. All execution stops until a key is pressed, then the
+        //value of that key is stored in Vx.
+        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0xF0, 0x0A]));
+        //instance.registers.set_delay_timer( 0x10 );
+        instance.cycle();
+        instance.cycle();
+        instance.cycle();
+        //should be equal to delay timer
+        assert!(instance.program_counter == 0x200);
+    }
+    
+    #[test]
+    fn executes_Fx15(){ //- LD DT, Vx
+        //Set delay timer = Vx. Delay Timer is set equal to the value of Vx.
+    }
+    
+    #[test]
+    fn executes_Fx18(){ //- LD ST, Vx
+        //Set sound timer = Vx. Sound Timer is set equal to the value of Vx.
+    }
+    
+    #[test]
+    fn executes_Fx1E(){// - ADD I, Vx
+        //Set I = I + Vx. The values of I and Vx are added, and the results are stored in I.
+    }
+    
+    #[test]
+    fn executes_Fx29(){// - LD F, Vx
+        //Set I = location of sprite for digit Vx. The value of I is set to the location for the hexadecimal sprite
+        //corresponding to the value of Vx. See section 2.4, Display, for more information on the Chip-8 hexadecimal
+        //font. To obtain this value, multiply VX by 5 (all font data stored in first 80 bytes of memory).
+    }
+    
+    #[test]
+    fn executes_Fx33(){// - LD B, Vx
+        //Store BCD representation of Vx in memory locations I, I+1, and I+2. The interpreter takes the decimal
+        //value of Vx, and places the hundreds digit in memory at location in I, the tens digit at location I+1, and
+        //the ones digit at location I+2.
+    }
+    
+    #[test]
+    fn executes_Fx55(){// - LD [I], Vx
+        //Stores V0 to VX in memory starting at address I. I is then set to I + x + 1.
+    }
+    
+    #[test]
+    fn executes_Fx65(){// - LD Vx, [I]
+        //Fills V0 to VX with values
+    }
+    
 }
+
+
+
+
+
+
+
+
+    
