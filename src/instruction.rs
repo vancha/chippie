@@ -1,8 +1,12 @@
-/// A list of every instruction in the chip8 language
-/// nnn is a hexadecimal memory address, it's 12 bits long
-/// nn is a hexadecimal byte, it's 8 bits
-/// n is what's called a "nibble", it's 4 bits
-/// X and Y are registers
+/// # A list of every instruction in the chip8 language
+/// ## nnn
+/// a hexadecimal memory address, it's 12 bits long
+/// ## nn
+/// a hexadecimal byte, 8 bits
+/// ## n
+/// a "nibble" 4 bits
+/// ## X and Y
+/// Registers
 #[derive(Debug, PartialEq)]
 pub enum Instruction {
     /// The "no-op" instruction, this does absolutely nothing, by design.

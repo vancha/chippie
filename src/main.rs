@@ -1,15 +1,13 @@
+use chip8_emulator::constants::{CYCLES_PER_FRAME, DISPLAY_HEIGHT, DISPLAY_WIDTH};
 use chip8_emulator::cpu::Cpu;
-use macroquad::prelude::*;
-mod constants;
-use crate::constants::{CYCLES_PER_FRAME, DISPLAY_HEIGHT, DISPLAY_WIDTH};
 use chip8_emulator::rombuffer::RomBuffer;
+use macroquad::prelude::*;
 
 ///This line creates a macroquad application window with the title "chip 8 interpreter \ chippie\"
 #[macroquad::main("Chip 8 interpreter \"Chippie\" ")]
 async fn main() {
     //creating a chip8 cpu object with a rom loaded
-    let b = RomBuffer::new("tests/ibmlogo.ch8");
-    let mut c = Cpu::new(b);
+    let mut c = Cpu::new(RomBuffer::new("tests/ibmlogo.ch8"));
 
     //used for displaying the screen of the chip-8 to the user
     let mut image = Image::gen_image_color(DISPLAY_WIDTH as u16, DISPLAY_HEIGHT as u16, WHITE);
