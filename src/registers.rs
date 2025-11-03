@@ -1,4 +1,4 @@
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 ///# Holds all the registers and the sound and delay timers
 pub struct Registers {
     register: [u8; 16],
@@ -12,14 +12,14 @@ pub struct Registers {
 }
 
 impl Registers {
-    pub fn new() -> Self {
+    /*pub fn new() -> Self {
         Registers {
             register: [0u8; 16],
             vindex: 0,
             delay_timer: 0,
             sound_timer: 0,
         }
-    }
+    }*/
     pub fn set_index_register(&mut self, value: u16) {
         self.vindex = value;
     }
@@ -28,6 +28,9 @@ impl Registers {
     }
     pub fn set_sound_timer(&mut self, value: u8) {
         self.sound_timer = value;
+    }
+    pub fn get_sound_timer(&self) -> u8 {
+        self.sound_timer
     }
     pub fn set_delay_timer(&mut self, value: u8) {
         self.delay_timer = value;
