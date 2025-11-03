@@ -502,9 +502,10 @@ impl Cpu {
 
         let instruction = self.decode(opcode);
         self.execute(instruction);
-
+        
         self.registers.decrement_sound_timer();
         self.registers.decrement_delay_timer();
+
     }
 
     /// Creates a new cpu object, with the contents of a rom file loaded in to memory
@@ -565,6 +566,7 @@ mod tests {
         instance.cycle();
         assert!(instance.display[0][0] == false);
     }
+
     #[test]
     fn executes_00EE() {
         // Return from a subroutine
@@ -860,7 +862,7 @@ mod tests {
         //should be incremented by 4 rather than two if button is down
         assert!(instance.program_counter == 0x200 + 4);
     }
-    
+
     #[test]
     fn executes_ExA1() {
         // Skip next instruction if key with the value of Vx is not pressed. Checks the keyboard, and if the key
@@ -869,9 +871,9 @@ mod tests {
         instance.cycle();
         //should be incremented by 4 rather than two if button is not down
         assert!(instance.program_counter == 0x200 + 4);
-        
-    } 
-    
+
+    }
+
     #[test]
     fn executes_Fx07(){
         //Set Vx = delay timer value. The value of DT is placed into Vx.
@@ -881,7 +883,7 @@ mod tests {
         //should be equal to delay timer
         assert!(instance.registers.get_register(0x0) == 0x10);
     }
-    
+
     #[test]
     fn executes_Fx0A(){
         //Wait for a key press, store the value of the key in Vx. All execution stops until a key is pressed, then the
@@ -894,46 +896,73 @@ mod tests {
         //should be equal to delay timer
         assert!(instance.program_counter == 0x200);
     }
-    
+
     #[test]
     fn executes_Fx15(){ //- LD DT, Vx
         //Set delay timer = Vx. Delay Timer is set equal to the value of Vx.
+        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0xf0, 0x15]));
+        instance.registers.set_register(0, 125);
+        instance.cycle();
+        let val = instance.registers.get_delay_timer();
+        //the value is one less than the actual value, because during the cycle the delay timer
+        //also gets decremented by one..
+        assert!(val == 124);
+
     }
-    
+
     #[test]
     fn executes_Fx18(){ //- LD ST, Vx
         //Set sound timer = Vx. Sound Timer is set equal to the value of Vx.
+        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0xf0, 0x18]));
+        instance.registers.set_register(0, 125);
+        instance.cycle();
+        let val = instance.registers.get_sound_timer();
+        //the value is one less than the actual value, because during the cycle the delay timer
+        //also gets decremented by one..
+        assert!(val == 124);
+
     }
-    
+
     #[test]
     fn executes_Fx1E(){// - ADD I, Vx
         //Set I = I + Vx. The values of I and Vx are added, and the results are stored in I.
+        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0xF6, 0x1E]));
+        instance.registers.set_index_register(0x6);
+        instance.registers.set_register(0x6, 6);
+        instance.cycle();
+        assert!(instance.registers.get_index_register() == 12);
+
+
     }
-    
+
     #[test]
     fn executes_Fx29(){// - LD F, Vx
         //Set I = location of sprite for digit Vx. The value of I is set to the location for the hexadecimal sprite
         //corresponding to the value of Vx. See section 2.4, Display, for more information on the Chip-8 hexadecimal
         //font. To obtain this value, multiply VX by 5 (all font data stored in first 80 bytes of memory).
+        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0xF0, 0x29]));
+        instance.registers.set_register(0x0, 0x6);
+        instance.cycle();
+        assert!(instance.registers.get_index_register() == 6 * 5);
     }
-    
+
     #[test]
     fn executes_Fx33(){// - LD B, Vx
         //Store BCD representation of Vx in memory locations I, I+1, and I+2. The interpreter takes the decimal
         //value of Vx, and places the hundreds digit in memory at location in I, the tens digit at location I+1, and
         //the ones digit at location I+2.
     }
-    
+
     #[test]
     fn executes_Fx55(){// - LD [I], Vx
         //Stores V0 to VX in memory starting at address I. I is then set to I + x + 1.
     }
-    
+
     #[test]
     fn executes_Fx65(){// - LD Vx, [I]
         //Fills V0 to VX with values
     }
-    
+
 }
 
 
@@ -943,4 +972,4 @@ mod tests {
 
 
 
-    
+
