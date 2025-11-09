@@ -44,148 +44,6 @@ impl Cpu {
     fn fetch(&self) -> u16 {
         self.memory.get_opcode(self.program_counter)
     }
-    /// Takes two bytes, and decodes what instruction they represent
-    fn decode(opcode: u16) -> Instruction {
-        match Cpu::get_nibble(opcode, 0) {
-            0x0 => match Cpu::last_byte(opcode) {
-                0xE0 => Instruction::ClearScreen,
-                0xEE => Instruction::ReturnFromSubroutine,
-                _ => Instruction::Noop, //panic!("Unimplemented opcode: {:#04x}", opcode),
-            },
-            0x1 => Instruction::Jump {
-                nnn: Cpu::oxxx(opcode),
-            },
-            0x2 => Instruction::CallSubroutineAtNNN {
-                nnn: Cpu::oxxx(opcode),
-            },
-            0x3 => Instruction::SkipNextInstructionIfXIsKK {
-                x: Cpu::get_nibble(opcode, 1),
-                kk: Cpu::last_byte(opcode),
-            },
-            0x4 => Instruction::SkipNextInstructionIfXIsNotKK {
-                x: Cpu::get_nibble(opcode, 1),
-                kk: Cpu::last_byte(opcode),
-            },
-            0x5 => Instruction::SkipNextInstructionIfXIsY {
-                x: Cpu::get_nibble(opcode, 1),
-                y: Cpu::get_nibble(opcode, 2),
-            },
-            0x6 => Instruction::LoadRegisterX {
-                x: Cpu::get_nibble(opcode, 1),
-                kk: Cpu::last_byte(opcode),
-            },
-            0x7 => Instruction::AddToRegisterX {
-                x: Cpu::get_nibble(opcode, 1),
-                kk: Cpu::last_byte(opcode),
-            },
-            0x8 => match Cpu::get_nibble(opcode, 3) {
-                0x0 => Instruction::LoadRegisterXIntoY {
-                    x: Cpu::get_nibble(opcode, 1),
-                    y: Cpu::get_nibble(opcode, 2),
-                },
-                0x1 => Instruction::LoadXOrYinX {
-                    x: Cpu::get_nibble(opcode, 1),
-                    y: Cpu::get_nibble(opcode, 2),
-                },
-                0x2 => Instruction::LoadXAndYInX {
-                    x: Cpu::get_nibble(opcode, 1),
-                    y: Cpu::get_nibble(opcode, 2),
-                },
-                0x3 => Instruction::LoadXXorYInX {
-                    x: Cpu::get_nibble(opcode, 1),
-                    y: Cpu::get_nibble(opcode, 2),
-                },
-
-                0x4 => Instruction::AddYToX {
-                    x: Cpu::get_nibble(opcode, 1),
-                    y: Cpu::get_nibble(opcode, 2),
-                },
-                0x5 => Instruction::SubYFromX {
-                    x: Cpu::get_nibble(opcode, 1),
-                    y: Cpu::get_nibble(opcode, 2),
-                },
-                0x6 => Instruction::ShiftXRight1 {
-                    x: Cpu::get_nibble(opcode, 1),
-                },
-                0x7 => Instruction::SubXFromY {
-                    x: Cpu::get_nibble(opcode, 1),
-                    y: Cpu::get_nibble(opcode, 2),
-                },
-
-                0xE => Instruction::ShiftXLeft1 {
-                    x: Cpu::get_nibble(opcode, 1),
-                },
-                _ => {
-                    panic!("some other 8xxx thingy")
-                }
-            },
-            0x9 => Instruction::SkipNextInstructionIfXIsNotY {
-                x: Cpu::get_nibble(opcode, 1),
-                y: Cpu::get_nibble(opcode, 2),
-            },
-            0xA => Instruction::SetIndexRegister {
-                nnn: Cpu::oxxx(opcode),
-            },
-            0xB => Instruction::JumpToAddressPlusV0 {
-                nnn: Cpu::oxxx(opcode),
-            },
-            0xC => Instruction::SetXToRandom {
-                x: Cpu::get_nibble(opcode, 1),
-                kk: Cpu::last_byte(opcode),
-            },
-            0xD => Instruction::Display {
-                x: Cpu::get_nibble(opcode, 1),
-                y: Cpu::get_nibble(opcode, 2),
-                n: Cpu::get_nibble(opcode, 3),
-            },
-            0xE => match Cpu::last_byte(opcode) {
-                0xA1 => Instruction::SkipIfVxNotPressed {
-                    x: Cpu::get_nibble(opcode, 1),
-                },
-                0x9E => Instruction::SkipIfVxPressed {
-                    x: Cpu::get_nibble(opcode, 1),
-                },
-                _ => {
-                    panic!("unimplemented opcode: 0x{opcode:04x}");
-                }
-            },
-            0xF => match Cpu::last_byte(opcode) {
-                0x0A => Instruction::WaitForKeyPressed {
-                    x: Cpu::get_nibble(opcode, 1),
-                },
-                0x07 => Instruction::SetXToDelayTimer {
-                    x: Cpu::get_nibble(opcode, 1),
-                },
-                0x15 => Instruction::SetDelayTimerToX {
-                    x: Cpu::get_nibble(opcode, 1),
-                },
-                0x18 => Instruction::SetSoundTimerToX {
-                    x: Cpu::get_nibble(opcode, 1),
-                },
-                0x1E => Instruction::AddXtoI {
-                    x: Cpu::get_nibble(opcode, 1),
-                },
-                0x29 => Instruction::SetIToSpriteX {
-                    x: Cpu::get_nibble(opcode, 1),
-                },
-                0x33 => Instruction::LoadBCDOfX {
-                    x: Cpu::get_nibble(opcode, 1),
-                },
-                0x55 => Instruction::Write0ThroughX {
-                    x: Cpu::get_nibble(opcode, 1),
-                },
-                0x65 => Instruction::Load0ThroughX {
-                    x: Cpu::get_nibble(opcode, 1),
-                },
-                _ => {
-                    panic!("unimplemented opcode: 0x{opcode:06x}");
-                }
-            },
-            _ => {
-                panic!("cannot decode,opcode not implemented: {opcode:04x}")
-            }
-        }
-    }
 
     ///Execute the instruction, for details on the instruction, check the instruction enum
     ///definition
@@ -456,20 +314,6 @@ impl Cpu {
             }
         }
     }
-    /// A nibble is 4 bits, so this returns the first 4 bits of an opcode
-    fn get_nibble(opcode: u16, nth: u8) -> u8 {
-        assert!(nth < 4);
-        ((opcode >> (12 - 4 * nth)) & 0xf) as u8
-    }
-    /// Returns the last full byte byte of an opcode
-    fn last_byte(opcode: u16) -> u8 {
-        (opcode & 0xff) as u8
-    }
-    /// Returns the the last 12 bits of an opcode
-    fn oxxx(opcode: u16) -> u16 {
-        opcode & 0xfff
-    }
-
     fn get_pressed_key(&self) -> Option<usize> {
         self.keyboard
             .iter()
@@ -492,7 +336,7 @@ impl Cpu {
         let opcode = self.fetch();
         self.program_counter += 2;
 
-        let instruction = Cpu::decode(opcode);
+        let instruction = Instruction::new(opcode);
         self.execute(instruction);
 
         self.registers.decrement_sound_timer();

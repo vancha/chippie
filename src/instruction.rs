@@ -140,3 +140,162 @@ pub enum Instruction {
         x: u8,
     }, //fx65
 }
+
+impl Instruction {
+    /// Takes two bytes, and decodes what instruction they represent
+    pub fn new(opcode: u16) -> Self {
+        match Self::get_nibble(opcode, 0) {
+            0x0 => match Self::last_byte(opcode) {
+                0xE0 => Instruction::ClearScreen,
+                0xEE => Instruction::ReturnFromSubroutine,
+                _ => Instruction::Noop, //panic!("Unimplemented opcode: {:#04x}", opcode),
+            },
+            0x1 => Instruction::Jump {
+                nnn: Self::oxxx(opcode),
+            },
+            0x2 => Instruction::CallSubroutineAtNNN {
+                nnn: Self::oxxx(opcode),
+            },
+            0x3 => Instruction::SkipNextInstructionIfXIsKK {
+                x: Self::get_nibble(opcode, 1),
+                kk: Self::last_byte(opcode),
+            },
+            0x4 => Instruction::SkipNextInstructionIfXIsNotKK {
+                x: Self::get_nibble(opcode, 1),
+                kk: Self::last_byte(opcode),
+            },
+            0x5 => Instruction::SkipNextInstructionIfXIsY {
+                x: Self::get_nibble(opcode, 1),
+                y: Self::get_nibble(opcode, 2),
+            },
+            0x6 => Instruction::LoadRegisterX {
+                x: Self::get_nibble(opcode, 1),
+                kk: Self::last_byte(opcode),
+            },
+            0x7 => Instruction::AddToRegisterX {
+                x: Self::get_nibble(opcode, 1),
+                kk: Self::last_byte(opcode),
+            },
+            0x8 => match Self::get_nibble(opcode, 3) {
+                0x0 => Instruction::LoadRegisterXIntoY {
+                    x: Self::get_nibble(opcode, 1),
+                    y: Self::get_nibble(opcode, 2),
+                },
+                0x1 => Instruction::LoadXOrYinX {
+                    x: Self::get_nibble(opcode, 1),
+                    y: Self::get_nibble(opcode, 2),
+                },
+                0x2 => Instruction::LoadXAndYInX {
+                    x: Self::get_nibble(opcode, 1),
+                    y: Self::get_nibble(opcode, 2),
+                },
+                0x3 => Instruction::LoadXXorYInX {
+                    x: Self::get_nibble(opcode, 1),
+                    y: Self::get_nibble(opcode, 2),
+                },
+
+                0x4 => Instruction::AddYToX {
+                    x: Self::get_nibble(opcode, 1),
+                    y: Self::get_nibble(opcode, 2),
+                },
+                0x5 => Instruction::SubYFromX {
+                    x: Self::get_nibble(opcode, 1),
+                    y: Self::get_nibble(opcode, 2),
+                },
+                0x6 => Instruction::ShiftXRight1 {
+                    x: Self::get_nibble(opcode, 1),
+                },
+                0x7 => Instruction::SubXFromY {
+                    x: Self::get_nibble(opcode, 1),
+                    y: Self::get_nibble(opcode, 2),
+                },
+
+                0xE => Instruction::ShiftXLeft1 {
+                    x: Self::get_nibble(opcode, 1),
+                },
+                _ => {
+                    panic!("some other 8xxx thingy")
+                }
+            },
+            0x9 => Instruction::SkipNextInstructionIfXIsNotY {
+                x: Self::get_nibble(opcode, 1),
+                y: Self::get_nibble(opcode, 2),
+            },
+            0xA => Instruction::SetIndexRegister {
+                nnn: Self::oxxx(opcode),
+            },
+            0xB => Instruction::JumpToAddressPlusV0 {
+                nnn: Self::oxxx(opcode),
+            },
+            0xC => Instruction::SetXToRandom {
+                x: Self::get_nibble(opcode, 1),
+                kk: Self::last_byte(opcode),
+            },
+            0xD => Instruction::Display {
+                x: Self::get_nibble(opcode, 1),
+                y: Self::get_nibble(opcode, 2),
+                n: Self::get_nibble(opcode, 3),
+            },
+            0xE => match Self::last_byte(opcode) {
+                0xA1 => Instruction::SkipIfVxNotPressed {
+                    x: Self::get_nibble(opcode, 1),
+                },
+                0x9E => Instruction::SkipIfVxPressed {
+                    x: Self::get_nibble(opcode, 1),
+                },
+                _ => {
+                    panic!("unimplemented opcode: 0x{opcode:04x}");
+                }
+            },
+            0xF => match Self::last_byte(opcode) {
+                0x0A => Instruction::WaitForKeyPressed {
+                    x: Self::get_nibble(opcode, 1),
+                },
+                0x07 => Instruction::SetXToDelayTimer {
+                    x: Self::get_nibble(opcode, 1),
+                },
+                0x15 => Instruction::SetDelayTimerToX {
+                    x: Self::get_nibble(opcode, 1),
+                },
+                0x18 => Instruction::SetSoundTimerToX {
+                    x: Self::get_nibble(opcode, 1),
+                },
+                0x1E => Instruction::AddXtoI {
+                    x: Self::get_nibble(opcode, 1),
+                },
+                0x29 => Instruction::SetIToSpriteX {
+                    x: Self::get_nibble(opcode, 1),
+                },
+                0x33 => Instruction::LoadBCDOfX {
+                    x: Self::get_nibble(opcode, 1),
+                },
+                0x55 => Instruction::Write0ThroughX {
+                    x: Self::get_nibble(opcode, 1),
+                },
+                0x65 => Instruction::Load0ThroughX {
+                    x: Self::get_nibble(opcode, 1),
+                },
+                _ => {
+                    panic!("unimplemented opcode: 0x{opcode:06x}");
+                }
+            },
+            _ => {
+                panic!("cannot decode,opcode not implemented: {opcode:04x}")
+            }
+        }
+    }
+
+    /// A nibble is 4 bits, so this returns the first 4 bits of an opcode
+    fn get_nibble(opcode: u16, nth: u8) -> u8 {
+        assert!(nth < 4);
+        ((opcode >> (12 - 4 * nth)) & 0xf) as u8
+    }
+    /// Returns the last full byte byte of an opcode
+    fn last_byte(opcode: u16) -> u8 {
+        (opcode & 0xff) as u8
+    }
+    /// Returns the the last 12 bits of an opcode
+    fn oxxx(opcode: u16) -> u16 {
+        opcode & 0xfff
+    }
+}
