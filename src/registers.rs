@@ -1,7 +1,9 @@
+use crate::constants::NUM_REGISTERS;
+
 #[derive(Clone, Copy, Default)]
 ///# Holds all the registers and the sound and delay timers
 pub struct Registers {
-    register: [u8; 16],
+    register: [u8; NUM_REGISTERS as usize],
     vindex: u16,
     /// 0 by default, unless its set to a number then it will just start decrementing by one 60 times per
     /// second

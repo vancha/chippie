@@ -213,7 +213,7 @@ impl Cpu {
 
                 //move over all rows of the sprite (it has n rows)
                 for sprite_row in 0..n as usize {
-                    if sprite_start + sprite_row >= RAM_SIZE {
+                    if sprite_start + sprite_row >= RAM_SIZE as usize {
                         return;
                     }
                     let sprite = self.memory.bytes[sprite_start + sprite_row]; //bytes[sprite_start + sprite_row];
@@ -377,6 +377,7 @@ impl Cpu {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::constants::NUM_REGISTERS;
 
     #[test]
     fn it_can_initialize() {
@@ -813,8 +814,31 @@ mod tests {
     #[test]
     fn executes_Fx55() {
         // - LD [I], Vx
-        //Stores V0 to VX in memory starting at address I. I is then set to I + x + 1.
-        //let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0xF0, 0x55]));
+        //Stores V0 to VX in memory starting at address I. I is not changed.
+        let register_value = 0xFF;
+        for x in 0..16 {
+            for index_register_value in 0..RAM_SIZE - x {
+                let mut instance = Cpu::new(RomBuffer::from_bytes(vec![(x | 0xF0) as u8, 0x55]));
+                // Fill registers with the expected values
+                for register in 0..NUM_REGISTERS {
+                    instance.registers.set_register(register, register_value);
+                }
+                instance.registers.set_index_register(index_register_value);
+
+                // Run the emulator to see the effect
+                instance.cycle();
+
+                // Check if every byte inside RAM corresponds to the expected value
+                for offset in 0..x {
+                    assert!(
+                        instance.memory.get_byte(index_register_value + offset) == register_value
+                    );
+                }
+
+                // Check if VI changed
+                assert!(instance.registers.get_index_register() == index_register_value)
+            }
+        }
     }
 
     // - LD Vx, [I]

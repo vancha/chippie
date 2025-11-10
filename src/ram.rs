@@ -8,13 +8,13 @@ use crate::constants::RAM_SIZE;
 ///0xfff end of chip8 ram
 #[derive(Debug, Copy, Clone)]
 pub struct Ram {
-    pub bytes: [u8; RAM_SIZE],
+    pub bytes: [u8; RAM_SIZE as usize],
 }
 impl Ram {
     /// Returns the ram with the fontset already loaded
     pub fn with_fonts() -> Self {
         let mut ram = Self {
-            bytes: [0; RAM_SIZE],
+            bytes: [0; RAM_SIZE as usize],
         };
         // The fontset
         // This is basically a collection of bytes that make up numbers when written out in binary.
