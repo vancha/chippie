@@ -216,7 +216,8 @@ impl Cpu {
                     if sprite_start + sprite_row >= RAM_SIZE as usize {
                         return;
                     }
-                    let sprite = self.memory.bytes[sprite_start + sprite_row]; //bytes[sprite_start + sprite_row];
+                    //bytes[sprite_start + sprite_row];
+                    let sprite = self.memory.bytes[sprite_start + sprite_row];
                     //what is the sprite?
                     for sprite_column in 0..8 {
                         let pixel_row = start_x + sprite_column;
@@ -314,14 +315,14 @@ impl Cpu {
             }
         }
     }
-    fn get_pressed_key(&self) -> Option<usize> {
+    pub fn get_pressed_key(&self) -> Option<usize> {
         self.keyboard
             .iter()
             .position(|button_pressed| *button_pressed)
     }
 
     //this should be part of an interface somehow, maybe a trait that lets external programs set the keys for the emulator
-    fn set_pressed_key(&mut self, key: usize) {
+    pub fn set_pressed_key(&mut self, key: usize) {
         if !self.keyboard[key] {
             self.keyboard[key] = true;
         }
@@ -382,45 +383,45 @@ mod tests {
     #[test]
     fn it_can_initialize() {
         let buffer = RomBuffer::new("tests/1-chip8-logo.8o");
-        let instance = Cpu::new(buffer);
-        assert!(instance.program_counter == ROM_START_ADDRESS);
+        let cpu = Cpu::new(buffer);
+        assert!(cpu.program_counter == ROM_START_ADDRESS);
     }
 
     #[test]
     fn it_can_fetch_instruction() {
         let buffer = RomBuffer::new("tests/1-chip8-logo.8o");
-        let instance = Cpu::new(buffer);
-        assert!(instance.fetch() == 0x2320);
+        let cpu = Cpu::new(buffer);
+        assert!(cpu.fetch() == 0x2320);
     }
 
     // instructions in order of https://www.cs.columbia.edu/~sedwards/classes/2016/4840-spring/designs/Chip8.pdf
     #[test]
     fn executes_00E0() {
         // Clears the display
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0x00, 0xE0]));
-        instance.display[0][0] = true;
-        instance.cycle();
-        assert!(instance.display[0][0] == false);
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0x00, 0xE0]));
+        cpu.display[0][0] = true;
+        cpu.cycle();
+        assert!(cpu.display[0][0] == false);
     }
 
     #[test]
     fn executes_00EE() {
         // Return from a subroutine
         // sets the counter to the address at the top of the stack, and subtracts 1 from the stack pointer
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0x00, 0xEE]));
-        instance.stack.set(0, 0x201);
-        instance.stackpointer = 1;
-        instance.cycle();
-        assert!(instance.stackpointer == 0);
-        assert!(instance.program_counter == 0x201);
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0x00, 0xEE]));
+        cpu.stack.set(0, 0x201);
+        cpu.stackpointer = 1;
+        cpu.cycle();
+        assert!(cpu.stackpointer == 0);
+        assert!(cpu.program_counter == 0x201);
     }
 
     #[test]
     fn executes_1NNN() {
         // Jumps to location nnn, this should set the program counter to nnn
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0x11, 0x23]));
-        instance.cycle();
-        assert_eq!(instance.program_counter, 0x123);
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0x11, 0x23]));
+        cpu.cycle();
+        assert_eq!(cpu.program_counter, 0x123);
     }
 
     #[test]
@@ -429,111 +430,111 @@ mod tests {
         // 1. increment the stack pointer
         // 2. put the current program counter at the top of the stack
         // 3. sets the program counter to nnn
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0x21, 0x23]));
-        instance.cycle();
-        assert!(instance.stackpointer == 1);
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0x21, 0x23]));
+        cpu.cycle();
+        assert!(cpu.stackpointer == 1);
         //In a cycle the program counter gets updated before it is pushed to the stack
-        assert!(instance.stack.get(0) == 0x202);
-        assert!(instance.program_counter == 0x123);
+        assert!(cpu.stack.get(0) == 0x202);
+        assert!(cpu.program_counter == 0x123);
     }
 
     #[test]
     fn executes_3XKK() {
         //Should increment the program counter by two if  register VX is equal to NN
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0x31, 0x00]));
-        instance.cycle();
-        assert!(instance.program_counter == 0x204);
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0x31, 0x00]));
+        cpu.cycle();
+        assert!(cpu.program_counter == 0x204);
 
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0x31, 0x01]));
-        instance.cycle();
-        assert!(instance.program_counter == 0x202);
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0x31, 0x01]));
+        cpu.cycle();
+        assert!(cpu.program_counter == 0x202);
     }
 
     #[test]
     fn executes_4Xkk() {
         //Should increment the program counter by two if  register VX is not equal to NN
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0x41, 0x00]));
-        instance.cycle();
-        assert!(instance.program_counter == 0x202);
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0x41, 0x00]));
+        cpu.cycle();
+        assert!(cpu.program_counter == 0x202);
 
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0x41, 0x01]));
-        instance.cycle();
-        assert!(instance.program_counter == 0x204);
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0x41, 0x01]));
+        cpu.cycle();
+        assert!(cpu.program_counter == 0x204);
     }
 
     #[test]
     fn executes_5XY0() {
         //Should increment the program counter by two if register vs equals register vy
         //here regsiter x and y are both 0, which should update the pc to 0x204
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0x51, 0x20]));
-        instance.cycle();
-        assert!(instance.program_counter == 0x204);
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0x51, 0x20]));
+        cpu.cycle();
+        assert!(cpu.program_counter == 0x204);
 
         //Here register 1 will be set to 5, so it should leave the pc at 0x202
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0x51, 0x20]));
-        instance.registers.set_register(1, 5);
-        instance.cycle();
-        assert!(instance.program_counter == 0x202);
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0x51, 0x20]));
+        cpu.registers.set_register(1, 5);
+        cpu.cycle();
+        assert!(cpu.program_counter == 0x202);
     }
 
     #[test]
     fn executes_6XKK() {
         //Should put the value KK in to register X
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0x60, 0x22]));
-        instance.cycle();
-        assert!(instance.registers.get_register(0) == 0x22);
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0x60, 0x22]));
+        cpu.cycle();
+        assert!(cpu.registers.get_register(0) == 0x22);
 
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0x61, 0x23]));
-        instance.cycle();
-        assert!(instance.registers.get_register(1) == 0x23);
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0x61, 0x23]));
+        cpu.cycle();
+        assert!(cpu.registers.get_register(1) == 0x23);
     }
 
     #[test]
     fn executes_7XKK() {
         //Should put the value KK plus the current value of register x in to register X
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0x71, 0x05]));
-        instance.registers.set_register(0x1, 0x4);
-        instance.cycle();
-        assert!(instance.registers.get_register(1) == 0x09);
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0x71, 0x05]));
+        cpu.registers.set_register(0x1, 0x4);
+        cpu.cycle();
+        assert!(cpu.registers.get_register(1) == 0x09);
     }
 
     #[test]
     fn executes_8XY0() {
         //Should store the value of register y in to register x
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0x81, 0x20]));
-        instance.registers.set_register(0x2, 0x4);
-        instance.cycle();
-        assert!(instance.registers.get_register(2) == 0x4);
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0x81, 0x20]));
+        cpu.registers.set_register(0x2, 0x4);
+        cpu.cycle();
+        assert!(cpu.registers.get_register(2) == 0x4);
     }
 
     #[test]
     fn executes_8XY1() {
         //Should store the value of register y ORED with whatever is in register y in to register x
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0x81, 0x21]));
-        instance.registers.set_register(0x2, 4);
-        instance.registers.set_register(0x1, 2);
-        instance.cycle();
-        assert!(instance.registers.get_register(1) == (4 | 2));
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0x81, 0x21]));
+        cpu.registers.set_register(0x2, 4);
+        cpu.registers.set_register(0x1, 2);
+        cpu.cycle();
+        assert!(cpu.registers.get_register(1) == (4 | 2));
     }
 
     #[test]
     fn executes_8XY2() {
         //Should store the value of register y ANDed with whatever is in register y in to register x
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0x81, 0x22]));
-        instance.registers.set_register(0x2, 4);
-        instance.registers.set_register(0x1, 2);
-        instance.cycle();
-        assert!(instance.registers.get_register(1) == (4 & 2));
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0x81, 0x22]));
+        cpu.registers.set_register(0x2, 4);
+        cpu.registers.set_register(0x1, 2);
+        cpu.cycle();
+        assert!(cpu.registers.get_register(1) == (4 & 2));
     }
 
     #[test]
     fn executes_8XY3() {
         //Should store the value of register y XORed with whatever is in register y in to register x
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0x81, 0x23]));
-        instance.registers.set_register(0x2, 4);
-        instance.registers.set_register(0x1, 2);
-        instance.cycle();
-        assert!(instance.registers.get_register(1) == (4 ^ 2));
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0x81, 0x23]));
+        cpu.registers.set_register(0x2, 4);
+        cpu.registers.set_register(0x1, 2);
+        cpu.cycle();
+        assert!(cpu.registers.get_register(1) == (4 ^ 2));
     }
 
     #[test]
@@ -541,41 +542,41 @@ mod tests {
         //Should store the value of register y ADDED to whatever is in register y in to register x
         //if the value is bigger than 8 bits (i.e 255), register f should be set to 1, 0 otherwise, and only the lowest
         //8 bit of the result should be kept and stored in register x
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0x81, 0x24]));
-        instance.registers.set_register(0x2, 200);
-        instance.registers.set_register(0x1, 1);
-        instance.cycle();
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0x81, 0x24]));
+        cpu.registers.set_register(0x2, 200);
+        cpu.registers.set_register(0x1, 1);
+        cpu.cycle();
 
-        assert!(instance.registers.get_register(1) == (200 + 1));
-        assert!(instance.registers.get_register(0xf) == 0);
+        assert!(cpu.registers.get_register(1) == (200 + 1));
+        assert!(cpu.registers.get_register(0xf) == 0);
 
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0x81, 0x24]));
-        instance.registers.set_register(0x2, 200);
-        instance.registers.set_register(0x1, 60);
-        instance.cycle();
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0x81, 0x24]));
+        cpu.registers.set_register(0x2, 200);
+        cpu.registers.set_register(0x1, 60);
+        cpu.cycle();
         //This shows an overflow (200 + 60 is bigger than 8 bits), only the last 8 bits should be saved (so AND'ed with 0xff)
-        assert!(instance.registers.get_register(1) as u16 == (200 + 60) & 0xff);
+        assert!(cpu.registers.get_register(1) as u16 == (200 + 60) & 0xff);
         //and the carry flag should be set
-        assert!(instance.registers.get_register(0xf) == 1);
+        assert!(cpu.registers.get_register(0xf) == 1);
     }
 
     #[test]
     fn executes_8XY5() {
         //Should store the value of register y subtracted from whatever is in register y in to register x
         //if an underflow occurs, register f is set to 0, otherwise its 1. So the opposite of what you'd expect
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0x81, 0x25]));
-        instance.registers.set_register(0x1, 10);
-        instance.registers.set_register(0x2, 5);
-        instance.cycle();
-        assert!(instance.registers.get_register(1) == 10 - 5);
-        assert!(instance.registers.get_register(0xf) == 1);
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0x81, 0x25]));
+        cpu.registers.set_register(0x1, 10);
+        cpu.registers.set_register(0x2, 5);
+        cpu.cycle();
+        assert!(cpu.registers.get_register(1) == 10 - 5);
+        assert!(cpu.registers.get_register(0xf) == 1);
 
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0x81, 0x25]));
-        instance.registers.set_register(0x1, 5);
-        instance.registers.set_register(0x2, 10);
-        instance.cycle();
-        assert!(instance.registers.get_register(1) == 5u8.overflowing_sub(10).0);
-        assert!(instance.registers.get_register(0xf) == 0);
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0x81, 0x25]));
+        cpu.registers.set_register(0x1, 5);
+        cpu.registers.set_register(0x2, 10);
+        cpu.cycle();
+        assert!(cpu.registers.get_register(1) == 5u8.overflowing_sub(10).0);
+        assert!(cpu.registers.get_register(0xf) == 0);
     }
 
     #[test]
@@ -583,76 +584,75 @@ mod tests {
         //Should store the value of register x shifted right by one in register x
         //sets register f to 1 if the least significant bit of vx is 1, otherwise it sets it to 0
         //then vx is divided by 2?
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0x81, 0x26]));
-        instance.registers.set_register(0x1, 17);
-        instance.cycle();
-        assert!(instance.registers.get_register(1) == 8);
-        //assert!(instance.registers.get_register(0xf) == 0);
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0x81, 0x26]));
+        cpu.registers.set_register(0x1, 17);
+        cpu.cycle();
+        assert!(cpu.registers.get_register(1) == 8);
     }
 
     #[test]
     fn executes_8XY7() {
         // Should store the value of register x subtracted from the value in register y, inside register x. register f is said when we didn't borrow.
         // again, opposite of what you'd expect.
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0x81, 0x27]));
-        instance.registers.set_register(0x1, 2);
-        instance.registers.set_register(0x2, 10);
-        instance.cycle();
-        assert!(instance.registers.get_register(1) == 8);
-        assert!(instance.registers.get_register(0xf) == 1);
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0x81, 0x27]));
+        cpu.registers.set_register(0x1, 2);
+        cpu.registers.set_register(0x2, 10);
+        cpu.cycle();
+        assert!(cpu.registers.get_register(1) == 8);
+        assert!(cpu.registers.get_register(0xf) == 1);
 
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0x81, 0x27]));
-        instance.registers.set_register(0x1, 10);
-        instance.registers.set_register(0x2, 2);
-        instance.cycle();
-        assert!(instance.registers.get_register(1) == 248);
-        assert!(instance.registers.get_register(0xf) == 0);
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0x81, 0x27]));
+        cpu.registers.set_register(0x1, 10);
+        cpu.registers.set_register(0x2, 2);
+        cpu.cycle();
+        assert!(cpu.registers.get_register(1) == 248);
+        assert!(cpu.registers.get_register(0xf) == 0);
     }
 
     #[test]
     fn executes_8XYE() {
         // Set register x equal to itself shifted left by one. if msb of x is 1, then set VF. If not,
         // unset it. Afterwards, multiply the value at register x by 2. (not sure if i get that right, shl == multiply by 2)
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0x81, 0x2E]));
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0x81, 0x2E]));
         //the number 0xff has the most significant bit set to 1, so vf must be set when done
-        instance.registers.set_register(0x1, 0xff);
-        instance.cycle();
+        cpu.registers.set_register(0x1, 0xff);
+        cpu.cycle();
         //Check if it correctly sets vf based on the most significant bit
-        assert!(instance.registers.get_register(0xF) == 0x1);
+        assert!(cpu.registers.get_register(0xF) == 0x1);
         //Check if it correctly calculates the result of the instruction
-        assert_eq!(instance.registers.get_register(0x1), 0xff << 1);
+        assert_eq!(cpu.registers.get_register(0x1), 0xff << 1);
     }
 
     #[test]
     fn executes_ANNN() {
         // Directly sets the index register to NNN
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0xA1, 0x23]));
-        instance.cycle();
-        assert!(instance.registers.get_index_register() == 0x123);
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0xA1, 0x23]));
+        cpu.cycle();
+        assert!(cpu.registers.get_index_register() == 0x123);
     }
 
     #[test]
     fn executes_BNNN() {
         // Directly sets the index register to NNN
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0xB3, 0x00]));
-        instance.registers.set_register(0, 0x5);
-        instance.cycle();
-        assert!(instance.program_counter == 0x5 + 0x300);
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0xB3, 0x00]));
+        cpu.registers.set_register(0, 0x5);
+        cpu.cycle();
+        assert!(cpu.program_counter == 0x5 + 0x300);
     }
 
     #[test] //This test is disabled because i have no idea how to test random numbers
     fn executes_CXKK() {
         // Set Vx = random byte AND kk. The interpreter generates a random number from 0 to 255, which is then
         // ANDed with the value kk. The results are stored in Vx. See instruction 8xy2 for more information on AND
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0xC0, 0xff]));
-        instance.cycle();
-        let random_number = instance.registers.get_register(0);
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0xC0, 0xff]));
+        cpu.cycle();
+        let random_number = cpu.registers.get_register(0);
         assert_eq!(random_number, 197);
 
         //here the ANDed number is 0, so the result is zero too
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0xC0, 0x00]));
-        instance.cycle();
-        let random_number = instance.registers.get_register(0);
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0xC0, 0x00]));
+        cpu.cycle();
+        let random_number = cpu.registers.get_register(0);
         assert_eq!(random_number, 0);
     }
 
@@ -667,20 +667,20 @@ mod tests {
         //See instruction 8xy3 for more information on XOR, and section 2.4, Display, for more information on the Chip-8 screen and sprites.
 
         //0xD123 should make a 1-byte tall sprite sprite (n == 1), (x == 1 and y == 2)
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![
             0xD1, 0x21, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff,
         ]));
         //this should set both x and y to 2
-        instance.registers.set_register(1, 2);
-        instance.registers.set_register(2, 2);
+        cpu.registers.set_register(1, 2);
+        cpu.registers.set_register(2, 2);
 
         //sprite data starts at (keep in mind program data starts at 0x200, aad locations before that are pointing at font data probably)
         //this points to the ninth byte (0xff) in our rom as the start of our sprite data
-        instance.registers.set_index_register(ROM_START_ADDRESS + 9);
+        cpu.registers.set_index_register(ROM_START_ADDRESS + 9);
 
         //Given all this, chip8 should put 8 ones at (2,2) on the display
-        instance.cycle();
-        let byte_of_ones = instance.get_display_contents()[2];
+        cpu.cycle();
+        let byte_of_ones = cpu.get_display_contents()[2];
         let mut what_it_should_look_like = [false; 64];
         what_it_should_look_like[..10]
             .copy_from_slice(&[false, false, true, true, true, true, true, true, true, true]); //this is what the second column should look like
@@ -691,55 +691,54 @@ mod tests {
     fn executes_EX9E() {
         // Skip next instruction if key with the value of Vx is pressed. Checks the keyboard, and if the key corresponding
         // to the value of Vx is currently in the down position, PC is increased by 2.
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0xE0, 0x9E]));
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0xE0, 0x9E]));
         // location will be 0 (since that's default value for register 0)
-        instance.keyboard[0] = true;
-        instance.cycle();
+        cpu.keyboard[0] = true;
+        cpu.cycle();
         //should be incremented by 4 rather than two if button is down
-        assert!(instance.program_counter == 0x200 + 4);
+        assert!(cpu.program_counter == 0x200 + 4);
     }
 
     #[test]
     fn executes_ExA1() {
         // Skip next instruction if key with the value of Vx is not pressed. Checks the keyboard, and if the key
         // corresponding to the value of Vx is currently in the up position, PC is increased by 2.
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0xE0, 0xA1]));
-        instance.cycle();
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0xE0, 0xA1]));
+        cpu.cycle();
         //should be incremented by 4 rather than two if button is not down
-        assert!(instance.program_counter == 0x200 + 4);
+        assert!(cpu.program_counter == 0x200 + 4);
     }
 
     #[test]
     fn executes_Fx07() {
         //Set Vx = delay timer value. The value of DT is placed into Vx.
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0xF0, 0x07]));
-        instance.registers.set_delay_timer(0x10);
-        instance.cycle();
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0xF0, 0x07]));
+        cpu.registers.set_delay_timer(0x10);
+        cpu.cycle();
         //should be equal to delay timer
-        assert!(instance.registers.get_register(0x0) == 0x10);
+        assert!(cpu.registers.get_register(0x0) == 0x10);
     }
 
     #[test]
     fn executes_Fx0A() {
         //Wait for a key press, store the value of the key in Vx. All execution stops until a key is pressed, then the
         //value of that key is stored in Vx.
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0xF0, 0x0A]));
-        //instance.registers.set_delay_timer( 0x10 );
-        instance.cycle();
-        instance.cycle();
-        instance.cycle();
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0xF0, 0x0A]));
+        cpu.cycle();
+        cpu.cycle();
+        cpu.cycle();
         //should be equal to delay timer
-        assert!(instance.program_counter == 0x200);
+        assert!(cpu.program_counter == 0x200);
     }
 
     #[test]
     fn executes_Fx15() {
         //- LD DT, Vx
         //Set delay timer = Vx. Delay Timer is set equal to the value of Vx.
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0xf0, 0x15]));
-        instance.registers.set_register(0, 125);
-        instance.cycle();
-        let val = instance.registers.get_delay_timer();
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0xf0, 0x15]));
+        cpu.registers.set_register(0, 125);
+        cpu.cycle();
+        let val = cpu.registers.get_delay_timer();
         //the value is one less than the actual value, because during the cycle the delay timer
         //also gets decremented by one..
         assert!(val == 124);
@@ -749,10 +748,10 @@ mod tests {
     fn executes_Fx18() {
         //- LD ST, Vx
         //Set sound timer = Vx. Sound Timer is set equal to the value of Vx.
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0xf0, 0x18]));
-        instance.registers.set_register(0, 125);
-        instance.cycle();
-        let val = instance.registers.get_sound_timer();
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0xf0, 0x18]));
+        cpu.registers.set_register(0, 125);
+        cpu.cycle();
+        let val = cpu.registers.get_sound_timer();
         //the value is one less than the actual value, because during the cycle the delay timer
         //also gets decremented by one..
         assert!(val == 124);
@@ -762,11 +761,11 @@ mod tests {
     fn executes_Fx1E() {
         // - ADD I, Vx
         //Set I = I + Vx. The values of I and Vx are added, and the results are stored in I.
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0xF6, 0x1E]));
-        instance.registers.set_index_register(0x6);
-        instance.registers.set_register(0x6, 6);
-        instance.cycle();
-        assert!(instance.registers.get_index_register() == 12);
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0xF6, 0x1E]));
+        cpu.registers.set_index_register(0x6);
+        cpu.registers.set_register(0x6, 6);
+        cpu.cycle();
+        assert!(cpu.registers.get_index_register() == 12);
     }
 
     #[test]
@@ -775,10 +774,10 @@ mod tests {
         //Set I = location of sprite for digit Vx. The value of I is set to the location for the hexadecimal sprite
         //corresponding to the value of Vx. See section 2.4, Display, for more information on the Chip-8 hexadecimal
         //font. To obtain this value, multiply VX by 5 (all font data stored in first 80 bytes of memory).
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0xF0, 0x29]));
-        instance.registers.set_register(0x0, 0x6);
-        instance.cycle();
-        assert!(instance.registers.get_index_register() == 6 * 5);
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0xF0, 0x29]));
+        cpu.registers.set_register(0x0, 0x6);
+        cpu.cycle();
+        assert!(cpu.registers.get_index_register() == 6 * 5);
     }
 
     #[test]
@@ -787,26 +786,26 @@ mod tests {
         //Store BCD representation of Vx in memory locations I, I+1, and I+2. The interpreter takes the decimal
         //value of Vx, and places the hundreds digit in memory at location in I, the tens digit at location I+1, and
         //the ones digit at location I+2.
-        let mut instance = Cpu::new(RomBuffer::from_bytes(vec![0xF0, 0x33]));
-        instance.registers.set_register(0x0, 123);
-        instance.registers.set_index_register(220);
-        instance.cycle();
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0xF0, 0x33]));
+        cpu.registers.set_register(0x0, 123);
+        cpu.registers.set_index_register(220);
+        cpu.cycle();
         assert!(
-            instance
+            cpu
                 .memory
-                .get_byte(instance.registers.get_index_register())
+                .get_byte(cpu.registers.get_index_register())
                 == 1
         );
         assert!(
-            instance
+            cpu
                 .memory
-                .get_byte(instance.registers.get_index_register() + 1)
+                .get_byte(cpu.registers.get_index_register() + 1)
                 == 2
         );
         assert!(
-            instance
+            cpu
                 .memory
-                .get_byte(instance.registers.get_index_register() + 2)
+                .get_byte(cpu.registers.get_index_register() + 2)
                 == 3
         );
     }
@@ -818,32 +817,43 @@ mod tests {
         let register_value = 0xFF;
         for x in 0..16 {
             for index_register_value in 0..RAM_SIZE - x {
-                let mut instance = Cpu::new(RomBuffer::from_bytes(vec![(x | 0xF0) as u8, 0x55]));
+                let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![(x | 0xF0) as u8, 0x55]));
                 // Fill registers with the expected values
                 for register in 0..NUM_REGISTERS {
-                    instance.registers.set_register(register, register_value);
+                    cpu.registers.set_register(register, register_value);
                 }
-                instance.registers.set_index_register(index_register_value);
+                cpu.registers.set_index_register(index_register_value);
 
                 // Run the emulator to see the effect
-                instance.cycle();
+                cpu.cycle();
 
                 // Check if every byte inside RAM corresponds to the expected value
                 for offset in 0..x {
                     assert!(
-                        instance.memory.get_byte(index_register_value + offset) == register_value
+                        cpu.memory.get_byte(index_register_value + offset) == register_value
                     );
                 }
 
                 // Check if VI changed
-                assert!(instance.registers.get_index_register() == index_register_value)
+                assert!(cpu.registers.get_index_register() == index_register_value)
             }
         }
     }
 
-    // - LD Vx, [I]
     #[test]
     fn executes_Fx65() {
+        // - LD Vx, [I]
         //Fills V0 to VX with values from memory starting at address I. I is then set to I + x + 1.
+        let mut cpu = Cpu::new(RomBuffer::from_bytes(vec![0xF3, 0x65, 0x01, 0x02, 0x03]));
+        //sets the index register to point to the 0x01 in the ROM
+        cpu.registers.set_index_register(ROM_START_ADDRESS + 2);
+        //copies the values 0x01, 0x02 and 0x03 from memory to the registers
+        cpu.cycle();
+        //checks if the index register is unaffected as it should be (without quirks support)
+        assert!(cpu.registers.get_index_register() == ROM_START_ADDRESS + 2);
+        //checks if the registers have been set correctly
+        assert!(cpu.registers.get_register(0) == 0x01);
+        assert!(cpu.registers.get_register(1) == 0x02);
+        assert!(cpu.registers.get_register(2) == 0x03);
     }
 }
