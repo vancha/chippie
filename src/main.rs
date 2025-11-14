@@ -163,7 +163,7 @@ impl Example {
     
     fn view(&self) -> Element<'_, Message> {
         //Adds an emulator to a column that can draw itself
-        let content = column![emulator("This should be the actual path to the rom file")]
+        let content = column![emulator("assets/2-ibm-logo.ch8")]
             //decreases the maximum width of said emulator by 20px on all sides
             .padding(20)
             //clamps it to have a max width of 500
