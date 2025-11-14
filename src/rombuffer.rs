@@ -16,6 +16,20 @@ impl RomBuffer {
         RomBuffer { buffer: bytes }
     }
 }
+impl TryFrom<&str> for RomBuffer {
+    type Error = &'static str;
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match std::fs::read(value) {
+            Ok(buffer) => {
+                Ok(RomBuffer { buffer })
+            },
+            Err(msg) => {
+                Err("it didn't work :(")
+            },
+        }
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
