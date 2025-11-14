@@ -37,7 +37,7 @@ mod tests {
 
     #[test]
     fn loads_files() {
-        let rom_buffer = RomBuffer::new("tests/1-chip8-logo.8o");
+        let rom_buffer = RomBuffer::new("assets/1-chip8-logo.8o");
         assert!(rom_buffer.contents()[0] == 0x23);
     }
 }
