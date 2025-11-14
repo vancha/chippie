@@ -384,14 +384,14 @@
 
         #[test]
         fn it_can_initialize() {
-            let buffer = RomBuffer::new("tests/1-chip8-logo.8o");
+            let buffer = RomBuffer::new("assets/1-chip8-logo.8o");
             let cpu = Cpu::new(&buffer);
             assert!(cpu.program_counter == ROM_START_ADDRESS);
         }
 
         #[test]
         fn it_can_fetch_instruction() {
-            let buffer = RomBuffer::new("tests/1-chip8-logo.8o");
+            let buffer = RomBuffer::new("assets/1-chip8-logo.8o");
             let cpu = Cpu::new(&buffer);
         assert!(cpu.fetch() == 0x2320);
     }
