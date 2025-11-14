@@ -14,17 +14,15 @@ mod chip8emulator {
     const BLOCK_SIZE: f32 = 10.0;
     //this emulatorwrapper struct holds (or owns?) a chip8 emulator instance
     pub struct EmulatorWrapper {
-        emulator: Cpu,
+        emulator: Option<Cpu>,
     }
 
     impl EmulatorWrapper {
         pub fn new(path: &str) -> Self {
+
             Self {
-                emulator:Cpu::new(&RomBuffer::new(path)),
+                emulator:Some(Cpu::new(&RomBuffer::new(path))),
             }
-        }
-        pub fn press_button(&mut self, button: u8) {
-            self.emulator.set_pressed_key(button.into());
         }
     }
 
@@ -82,11 +80,14 @@ mod chip8emulator {
             _cursor: mouse::Cursor,
             _viewport: &Rectangle,
         ) {
-
-            //here we actually draw the emulator, and we know the bounds have already been
-            //calculated :)
-
-            
+            match &self.emulator {
+                Some(emulator) => {
+                    println!("I actually have an emulator to draw");
+                }
+                None => {
+                    println!("I have nothing to draw");
+                }
+            };
             renderer.fill_quad(
                 renderer::Quad {
                     bounds: layout.bounds(),
@@ -117,7 +118,7 @@ use iced::{Center, Element, Subscription};
 
 
 //for handling keyboard input
-use chip8emulator::{emulator, EmulatorWrapper};
+use chip8emulator::emulator;
 use iced::keyboard;
 use iced_native::subscription;
 use iced_native::Event;
@@ -132,7 +133,7 @@ pub fn main() -> iced::Result {
 
 struct Example {
     //this instantiates the widget
-    emulator: EmulatorWrapper,
+    emulator: Cpu,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -140,23 +141,22 @@ enum Message {
     //this message should call the cycle method on the widget, maybe it has to be forwarded "inside" the widget somehow?
     //not sure how to connect it to external messages yet
     Tick,
-    ButtonOnePressed,
 }
 
 impl Example {
     fn new() -> Self {
-        //This needs to refer to the actual path of the rom file
-        Example { emulator: EmulatorWrapper::new("assets/2-ibm-logo.ch8") }
+        //right now turning a string in to a rombuffer is fallible, solution: have the rom turn in to one that shows an error message
+        //returning a valid rombuffer object regardless. Then we can get rid of the unwrap
+        let rb: RomBuffer = "assets/2-ibm-logo.ch8".try_into().unwrap();
+        let emulator = Cpu::new(&rb);
+        //Returns an application with an emulator instance.
+        Example { emulator }
     }
 
     fn update(&mut self, message: Message) {
         match message {
             Message::Tick => {
                 println!("yee refreshing the thing!");
-            }
-            Message::ButtonOnePressed => {
-                self.emulator.press_button(1);
-                println!("lets try something");
             }
         }
     }
@@ -168,7 +168,7 @@ impl Example {
     
     fn view(&self) -> Element<'_, Message> {
         //Adds an emulator to a column that can draw itself
-        let content = column![emulator("assets/2-ibm-logo.ch8"), iced::widget::button("CLICK MEEHH!!").on_press(Message::ButtonOnePressed)]
+        let content = column![emulator("This should be the actual path to the rom file")]
             //decreases the maximum width of said emulator by 20px on all sides
             .padding(20)
             //clamps it to have a max width of 500

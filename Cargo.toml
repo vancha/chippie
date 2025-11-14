@@ -7,9 +7,12 @@ edition = "2024"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+iced = { git = "https://github.com/iced-rs/iced", features=["advanced", "tokio"] }
+time = "0.3.44"
+iced_native = "0.10.3"
+chippie-emulator = { path = "crates/chippie-emulator" }
 
 [workspace]
 members = [
     "crates/chippie-emulator",
 ]
-
