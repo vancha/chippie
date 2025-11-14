@@ -14,14 +14,17 @@ mod chip8emulator {
     const BLOCK_SIZE: f32 = 10.0;
     //this emulatorwrapper struct holds (or owns?) a chip8 emulator instance
     pub struct EmulatorWrapper {
-        emulator: Option<Cpu>,
+        emulator: Cpu,
     }
 
     impl EmulatorWrapper {
         pub fn new(path: &str) -> Self {
             Self {
-                emulator:Some(Cpu::new(&RomBuffer::new(path))),
+                emulator:Cpu::new(&RomBuffer::new(path)),
             }
+        }
+        pub fn press_button(&mut self, button: u8) {
+            self.emulator.set_pressed_key(button.into());
         }
     }
 
@@ -79,14 +82,11 @@ mod chip8emulator {
             _cursor: mouse::Cursor,
             _viewport: &Rectangle,
         ) {
-            match &self.emulator {
-                Some(emulator) => {
-                    println!("I actually have an emulator to draw");
-                }
-                None => {
-                    println!("I have nothing to draw");
-                }
-            };
+
+            //here we actually draw the emulator, and we know the bounds have already been
+            //calculated :)
+
+            
             renderer.fill_quad(
                 renderer::Quad {
                     bounds: layout.bounds(),
@@ -140,6 +140,7 @@ enum Message {
     //this message should call the cycle method on the widget, maybe it has to be forwarded "inside" the widget somehow?
     //not sure how to connect it to external messages yet
     Tick,
+    ButtonOnePressed,
 }
 
 impl Example {
@@ -153,6 +154,10 @@ impl Example {
             Message::Tick => {
                 println!("yee refreshing the thing!");
             }
+            Message::ButtonOnePressed => {
+                self.emulator.press_button(1);
+                println!("lets try something");
+            }
         }
     }
 
@@ -163,7 +168,7 @@ impl Example {
     
     fn view(&self) -> Element<'_, Message> {
         //Adds an emulator to a column that can draw itself
-        let content = column![emulator("assets/2-ibm-logo.ch8")]
+        let content = column![emulator("assets/2-ibm-logo.ch8"), iced::widget::button("CLICK MEEHH!!").on_press(Message::ButtonOnePressed)]
             //decreases the maximum width of said emulator by 20px on all sides
             .padding(20)
             //clamps it to have a max width of 500
