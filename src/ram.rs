@@ -62,7 +62,7 @@ impl Ram {
     }
 
     pub fn get_opcode(self, index: u16) -> u16 {
-        ((self.bytes[index as usize] as u16) << 8) | self.bytes[(index + 1) as usize] as u16
+        u16::from(self.bytes[index as usize]) | u16::from(self.bytes[(index + 1) as usize])
     }
 
     pub fn set(&mut self, index: u16, value: u8) {

@@ -1,7 +1,7 @@
 /// The width of the display in pixels
-pub const DISPLAY_WIDTH: usize = 64;
+pub const DISPLAY_WIDTH: u8 = 64;
 /// The height of the display in pixels
-pub const DISPLAY_HEIGHT: usize = 32;
+pub const DISPLAY_HEIGHT: u8 = 32;
 /// The size of ram in bytes
 pub const RAM_SIZE: u16 = 4096;
 /// How many cycles the cpu advances for every frame. This decides how fast the cpu will run

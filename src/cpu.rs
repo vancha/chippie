@@ -1,9 +1,9 @@
 use crate::constants::{DISPLAY_HEIGHT, DISPLAY_WIDTH, RAM_SIZE, ROM_START_ADDRESS};
-use crate::instruction::*;
-use crate::ram::*;
-use crate::registers::*;
-use crate::rombuffer::*;
-use crate::stack::*;
+use crate::instruction::Instruction;
+use crate::ram::Ram;
+use crate::registers::Registers;
+use crate::rombuffer::RomBuffer;
+use crate::stack::Stack;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 
@@ -21,7 +21,7 @@ struct Quirks {
 /// The main cpu,
 pub struct Cpu {
     /// A 2d array of booleans, representing the black and white pixels for the chip8 display
-    display: [[bool; DISPLAY_WIDTH]; DISPLAY_HEIGHT],
+    display: [[bool; DISPLAY_WIDTH as usize]; DISPLAY_HEIGHT as usize],
     ///Program counter, used to keep track of what to fetch,decode and execute from ram, initialized at 0x200
     program_counter: u16,
     /// A list of "buttons", for the keyboard. set to true when pressed, false otherwise
@@ -47,8 +47,8 @@ impl Cpu {
 
     ///Execute the instruction, for details on the instruction, check the instruction enum
     ///definition
-    fn execute(&mut self, instruction: Instruction) {
-        match instruction {
+    fn execute(&mut self, instruction: &Instruction) {
+        match *instruction {
             Instruction::Noop => {
                 //do nothing...
             }
@@ -56,7 +56,7 @@ impl Cpu {
             Instruction::ClearScreen => {
                 self.display
                     .iter_mut()
-                    .for_each(|x| *x = [false; DISPLAY_WIDTH]);
+                    .for_each(|x| *x = [false; DISPLAY_WIDTH as usize]);
             }
             //00EE
             Instruction::ReturnFromSubroutine => {
@@ -139,7 +139,8 @@ impl Cpu {
 
                 let (res, fv) = vy.overflowing_add(vx);
                 self.registers.set_register(x, res);
-                self.registers.set_register(0xf, if fv { 1 } else { 0 });
+                //u8::from(fv)
+                self.registers.set_register(0xf, u8::from(fv));
             }
 
             //8xy5
@@ -149,13 +150,13 @@ impl Cpu {
 
                 let (res, fv) = vx.overflowing_sub(vy);
                 self.registers.set_register(x, res);
-                self.registers.set_register(0xf, if fv { 0 } else { 1 });
+                self.registers.set_register(0xf, u8::from(!fv));
             }
 
             //8xy6
             Instruction::ShiftXRight1 { x } => {
                 let vx = self.registers.get_register(x);
-                let vf = if vx & 1 == 1 { 1 } else { 0 };
+                let vf = u8::from(vx & 1 == 1);
 
                 self.registers.set_register(x, vx.overflowing_shr(1).0);
                 self.registers.set_register(0xF, vf);
@@ -164,12 +165,11 @@ impl Cpu {
             //8xyE
             Instruction::ShiftXLeft1 { x } => {
                 let vx = self.registers.get_register(x);
-                let fv = (vx as u16 >> 7) & 1;
+                let fv = (u16::from(vx) >> 7) & 1;
                 let res = self.registers.get_register(x).wrapping_shl(1);
 
                 self.registers.set_register(x, res);
-                self.registers
-                    .set_register(0xf, if fv == 1 { 1 } else { 0 });
+                self.registers.set_register(0xf, u8::try_from(fv).unwrap());
             }
             //8xy7
             Instruction::SubXFromY { x, y } => {
@@ -177,7 +177,7 @@ impl Cpu {
                 let vy = self.registers.get_register(y);
                 let (res, fv) = vy.overflowing_sub(vx);
                 self.registers.set_register(x, res);
-                self.registers.set_register(0xf, if fv { 0 } else { 1 });
+                self.registers.set_register(0xf, u8::from(!fv));
             }
 
             //9XY0
@@ -194,7 +194,7 @@ impl Cpu {
             }
             //BNNN
             Instruction::JumpToAddressPlusV0 { nnn } => {
-                let v0 = (self.registers.get_register(0) & 0xf) as u16;
+                let v0 = u16::from(self.registers.get_register(0) & 0xf); //(self.registers.get_register(0) & 0xf) as u16;
                 self.program_counter = nnn + v0;
             }
             //cxkk
@@ -205,8 +205,8 @@ impl Cpu {
             //DXYN
             Instruction::Display { x, y, n } => {
                 //drawing at (start_x, start_y) on the display, wraps around if out of bounds
-                let start_x = (self.registers.get_register(x) % DISPLAY_WIDTH as u8) as usize;
-                let start_y = (self.registers.get_register(y) % DISPLAY_HEIGHT as u8) as usize;
+                let start_x = (self.registers.get_register(x) % DISPLAY_WIDTH) as usize;
+                let start_y = (self.registers.get_register(y) % DISPLAY_HEIGHT) as usize;
 
                 let sprite_start = self.registers.get_index_register() as usize;
                 self.registers.set_register(0xF, 0);
@@ -226,8 +226,8 @@ impl Cpu {
                         let sprite_pixel_set = sprite >> (7 - sprite_column) & 1 == 1;
 
                         //check so as to *not* draw out of bounds of the display
-                        if pixel_row < (DISPLAY_WIDTH as u16).into()
-                            && (pixel_column as u16) < (DISPLAY_HEIGHT as u16)
+                        if pixel_row < u16::from(DISPLAY_WIDTH).into()
+                            && u16::try_from(pixel_column).unwrap() < u16::from(DISPLAY_HEIGHT)
                         {
                             if self.display[pixel_column][pixel_row] && sprite_pixel_set {
                                 self.registers.set_register(0xf, 1);
@@ -277,7 +277,7 @@ impl Cpu {
             }
             //fx1E
             Instruction::AddXtoI { x } => {
-                let vx = self.registers.get_register(x) as u16;
+                let vx = u16::from(self.registers.get_register(x));
                 let vi = self.registers.get_index_register();
                 let added = vi + vx;
 
@@ -285,7 +285,7 @@ impl Cpu {
             }
             //fx29
             Instruction::SetIToSpriteX { x } => {
-                let vx = (self.registers.get_register(x) * 5) as u16;
+                let vx = u16::from(self.registers.get_register(x) * 5);
                 //the sprite at *index* x, not location x.
                 self.registers.set_index_register(vx);
             }
@@ -300,17 +300,17 @@ impl Cpu {
             Instruction::Write0ThroughX { x } => {
                 let vi = self.registers.get_index_register();
 
-                for register in 0..x + 1 {
+                for register in 0..=x {
                     let register_value = self.registers.get_register(register);
-                    self.memory.set(vi + register as u16, register_value);
+                    self.memory.set(vi + u16::from(register), register_value);
                 }
             }
             //fx65
             Instruction::Load0ThroughX { x } => {
                 let vi = self.registers.get_index_register();
-                for i in 0..x + 1 {
+                for i in 0..=x {
                     self.registers
-                        .set_register(i, self.memory.get_byte(vi + i as u16));
+                        .set_register(i, self.memory.get_byte(vi + u16::from(i)));
                 }
             }
         }
@@ -328,25 +328,27 @@ impl Cpu {
         }
     }
 
-    pub fn get_display_contents(&self) -> [[bool; DISPLAY_WIDTH]; DISPLAY_HEIGHT] {
+    pub fn get_display_contents(
+        &self,
+    ) -> [[bool; DISPLAY_WIDTH as usize]; DISPLAY_HEIGHT as usize] {
         self.display
     }
     /// A single cpu cycle, fetches, decodes, executes opcodes and
-    /// decrements the timers if relevant. also updates the program_counter
+    /// decrements the timers if relevant. also updates the program counter
     pub fn cycle(&mut self) {
         let opcode = self.fetch();
         self.program_counter += 2;
 
         let instruction = Instruction::new(opcode);
-        self.execute(instruction);
+        self.execute(&instruction);
 
         self.registers.decrement_sound_timer();
         self.registers.decrement_delay_timer();
     }
 
     /// Creates a new cpu object, with the contents of a rom file loaded in to memory
-    pub fn new(rom: RomBuffer) -> Self {
-        let display = [[false; DISPLAY_WIDTH]; DISPLAY_HEIGHT];
+    pub fn new(rom: &RomBuffer) -> Self {
+        let display = [[false; DISPLAY_WIDTH as usize]; DISPLAY_HEIGHT as usize];
         let program_counter = ROM_START_ADDRESS;
         let registers = Registers::default();
         let keyboard = [false; 16];
@@ -790,24 +792,9 @@ mod tests {
         cpu.registers.set_register(0x0, 123);
         cpu.registers.set_index_register(220);
         cpu.cycle();
-        assert!(
-            cpu
-                .memory
-                .get_byte(cpu.registers.get_index_register())
-                == 1
-        );
-        assert!(
-            cpu
-                .memory
-                .get_byte(cpu.registers.get_index_register() + 1)
-                == 2
-        );
-        assert!(
-            cpu
-                .memory
-                .get_byte(cpu.registers.get_index_register() + 2)
-                == 3
-        );
+        assert!(cpu.memory.get_byte(cpu.registers.get_index_register()) == 1);
+        assert!(cpu.memory.get_byte(cpu.registers.get_index_register() + 1) == 2);
+        assert!(cpu.memory.get_byte(cpu.registers.get_index_register() + 2) == 3);
     }
 
     #[test]
@@ -829,9 +816,7 @@ mod tests {
 
                 // Check if every byte inside RAM corresponds to the expected value
                 for offset in 0..x {
-                    assert!(
-                        cpu.memory.get_byte(index_register_value + offset) == register_value
-                    );
+                    assert!(cpu.memory.get_byte(index_register_value + offset) == register_value);
                 }
 
                 // Check if VI changed
