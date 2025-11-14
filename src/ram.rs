@@ -69,3 +69,4 @@ impl Ram {
         self.bytes[index as usize] = value;
     }
 }
+
