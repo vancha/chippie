@@ -19,7 +19,6 @@ mod chip8emulator {
 
     impl EmulatorWrapper {
         pub fn new(path: &str) -> Self {
-
             Self {
                 emulator:Some(Cpu::new(&RomBuffer::new(path))),
             }
@@ -118,7 +117,7 @@ use iced::{Center, Element, Subscription};
 
 
 //for handling keyboard input
-use chip8emulator::emulator;
+use chip8emulator::{emulator, EmulatorWrapper};
 use iced::keyboard;
 use iced_native::subscription;
 use iced_native::Event;
@@ -133,7 +132,7 @@ pub fn main() -> iced::Result {
 
 struct Example {
     //this instantiates the widget
-    emulator: Cpu,
+    emulator: EmulatorWrapper,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -145,12 +144,8 @@ enum Message {
 
 impl Example {
     fn new() -> Self {
-        //right now turning a string in to a rombuffer is fallible, solution: have the rom turn in to one that shows an error message
-        //returning a valid rombuffer object regardless. Then we can get rid of the unwrap
-        let rb: RomBuffer = "assets/2-ibm-logo.ch8".try_into().unwrap();
-        let emulator = Cpu::new(&rb);
-        //Returns an application with an emulator instance.
-        Example { emulator }
+        //This needs to refer to the actual path of the rom file
+        Example { emulator: EmulatorWrapper::new("assets/2-ibm-logo.ch8") }
     }
 
     fn update(&mut self, message: Message) {
