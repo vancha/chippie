@@ -19,6 +19,8 @@ impl Application {
             .height(Fill)
             .into()
     }
+
+    pub fn update(&mut self, message: Message) {}
 }
 
 impl Default for Application {
@@ -70,4 +72,8 @@ impl canvas::Program<Message> for Display {
 
         vec![frame.into_geometry()]
     }
+}
+
+pub fn run() -> iced::Result {
+    iced::run("Chippie", Application::update, Application::view)
 }
