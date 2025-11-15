@@ -1,398 +1,398 @@
-    use crate::constants::{DISPLAY_HEIGHT, DISPLAY_WIDTH, RAM_SIZE, ROM_START_ADDRESS};
-    use crate::instruction::Instruction;
-    use crate::ram::Ram;
-    use crate::registers::Registers;
-    use crate::rombuffer::RomBuffer;
-    use crate::stack::Stack;
-    use rand::{Rng, SeedableRng};
-    use rand_chacha::ChaCha8Rng;
+use crate::constants::{DISPLAY_HEIGHT, DISPLAY_WIDTH, RAM_SIZE, ROM_START_ADDRESS};
+use crate::instruction::Instruction;
+use crate::ram::Ram;
+use crate::registers::Registers;
+use crate::rombuffer::RomBuffer;
+use crate::stack::Stack;
+use rand::{Rng, SeedableRng};
+use rand_chacha::ChaCha8Rng;
 
-    #[derive(Default)]
-    struct Quirks {
-        shift_quirk: bool,
-        memory_increment_by_x: bool,
-        memory_leave_iunchanged: bool,
-        wrap: bool,
-        jump: bool,
-        vblank: bool,
-        logic: bool,
+#[derive(Default)]
+struct Quirks {
+    shift_quirk: bool,
+    memory_increment_by_x: bool,
+    memory_leave_iunchanged: bool,
+    wrap: bool,
+    jump: bool,
+    vblank: bool,
+    logic: bool,
+}
+
+/// The main cpu,
+pub struct Cpu {
+    /// A 2d array of booleans, representing the black and white pixels for the chip8 display
+    display: [[bool; DISPLAY_WIDTH as usize]; DISPLAY_HEIGHT as usize],
+    ///Program counter, used to keep track of what to fetch,decode and execute from ram, initialized at 0x200
+    program_counter: u16,
+    /// A list of "buttons", for the keyboard. set to true when pressed, false otherwise
+    keyboard: [bool; 16],
+    /// The memory, stores the rom data when loaded from disk
+    memory: Ram,
+    /// A random number generator. Added for testability reaons as it allows to test all random instructions with a fixed seed
+    rng: ChaCha8Rng,
+    /// Used to check which quirks should be enabled or disabled
+    quirks: Quirks,
+    /// Registers 0x0 through 0xF
+    registers: Registers,
+    stack: Stack,
+    /// Only contains indexes to locations in the stack, so 0 through 15
+    stackpointer: u8,
+}
+
+impl Cpu {
+    /// Returns two bytes from memory at the location where the program counter currently points to
+    fn fetch(&self) -> u16 {
+        self.memory.get_opcode(self.program_counter)
     }
 
-    /// The main cpu,
-    pub struct Cpu {
-        /// A 2d array of booleans, representing the black and white pixels for the chip8 display
-        display: [[bool; DISPLAY_WIDTH as usize]; DISPLAY_HEIGHT as usize],
-        ///Program counter, used to keep track of what to fetch,decode and execute from ram, initialized at 0x200
-        program_counter: u16,
-        /// A list of "buttons", for the keyboard. set to true when pressed, false otherwise
-        keyboard: [bool; 16],
-        /// The memory, stores the rom data when loaded from disk
-        memory: Ram,
-        /// A random number generator. Added for testability reaons as it allows to test all random instructions with a fixed seed
-        rng: ChaCha8Rng,
-        /// Used to check which quirks should be enabled or disabled
-        quirks: Quirks,
-        /// Registers 0x0 through 0xF
-        registers: Registers,
-        stack: Stack,
-        /// Only contains indexes to locations in the stack, so 0 through 15
-        stackpointer: u8,
-    }
+    ///Execute the instruction, for details on the instruction, check the instruction enum
+    ///definition
+    fn execute(&mut self, instruction: &Instruction) {
+        match *instruction {
+            Instruction::Noop => {
+                //do nothing...
+            }
+            //00E0
+            Instruction::ClearScreen => {
+                self.display
+                    .iter_mut()
+                    .for_each(|x| *x = [false; DISPLAY_WIDTH as usize]);
+            }
+            //00EE
+            Instruction::ReturnFromSubroutine => {
+                self.stackpointer -= 1;
+                self.program_counter = self.stack.get(self.stackpointer); //self.stack.values[self.stackpointer as usize];
+            }
+            //1NNN
+            Instruction::Jump { nnn } => {
+                self.program_counter = nnn;
+            }
+            //2NNN
+            Instruction::CallSubroutineAtNNN { nnn } => {
+                self.stack.set(self.stackpointer, self.program_counter); //.values[self.stackpointer as usize] = self.program_counter;
+                self.stackpointer += 1;
+                self.program_counter = nnn;
+            }
+            //3XKK
+            Instruction::SkipNextInstructionIfXIsKK { x, kk } => {
+                let vx = self.registers.get_register(x);
+                if vx == kk {
+                    self.program_counter += 2;
+                }
+            }
+            //4XKK
+            Instruction::SkipNextInstructionIfXIsNotKK { x, kk } => {
+                let vx = self.registers.get_register(x);
 
-    impl Cpu {
-        /// Returns two bytes from memory at the location where the program counter currently points to
-        fn fetch(&self) -> u16 {
-            self.memory.get_opcode(self.program_counter)
-        }
+                if vx != kk {
+                    self.program_counter += 2;
+                }
+            }
+            //5XY0
+            Instruction::SkipNextInstructionIfXIsY { x, y } => {
+                let vx = self.registers.get_register(x);
+                let vy = self.registers.get_register(y);
 
-        ///Execute the instruction, for details on the instruction, check the instruction enum
-        ///definition
-        fn execute(&mut self, instruction: &Instruction) {
-            match *instruction {
-                Instruction::Noop => {
-                    //do nothing...
+                if vx == vy {
+                    self.program_counter += 2;
                 }
-                //00E0
-                Instruction::ClearScreen => {
-                    self.display
-                        .iter_mut()
-                        .for_each(|x| *x = [false; DISPLAY_WIDTH as usize]);
+            }
+            //6XKK
+            Instruction::LoadRegisterX { x, kk } => {
+                self.registers.set_register(x, kk);
+            }
+            //7XKK
+            Instruction::AddToRegisterX { x, kk } => {
+                let vx = self.registers.get_register(x);
+
+                let (tmp, _overflow) = vx.overflowing_add(kk);
+                self.registers.set_register(x, tmp);
+            }
+            //8xy0
+            Instruction::LoadRegisterXIntoY { x, y } => {
+                let vy = self.registers.get_register(y);
+                self.registers.set_register(x, vy);
+            }
+            //8xy1
+            Instruction::LoadXOrYinX { x, y } => {
+                let vx = self.registers.get_register(x);
+                let vy = self.registers.get_register(y);
+                self.registers.set_register(x, vx | vy);
+            }
+            //8xy2
+            Instruction::LoadXAndYInX { x, y } => {
+                let vx = self.registers.get_register(x);
+                let vy = self.registers.get_register(y);
+
+                self.registers.set_register(x, vx & vy);
+            }
+            //8xy3
+            Instruction::LoadXXorYInX { x, y } => {
+                let vx = self.registers.get_register(x);
+                let vy = self.registers.get_register(y);
+                self.registers.set_register(x, vx ^ vy);
+            }
+            //8xy4
+            Instruction::AddYToX { x, y } => {
+                let vx = self.registers.get_register(x);
+                let vy = self.registers.get_register(y);
+
+                let (res, fv) = vy.overflowing_add(vx);
+                self.registers.set_register(x, res);
+                //u8::from(fv)
+                self.registers.set_register(0xf, u8::from(fv));
+            }
+
+            //8xy5
+            Instruction::SubYFromX { x, y } => {
+                let vx = self.registers.get_register(x);
+                let vy = self.registers.get_register(y);
+
+                let (res, fv) = vx.overflowing_sub(vy);
+                self.registers.set_register(x, res);
+                self.registers.set_register(0xf, u8::from(!fv));
+            }
+
+            //8xy6
+            Instruction::ShiftXRight1 { x } => {
+                let vx = self.registers.get_register(x);
+                let vf = u8::from(vx & 1 == 1);
+
+                self.registers.set_register(x, vx.overflowing_shr(1).0);
+                self.registers.set_register(0xF, vf);
+            }
+
+            //8xyE
+            Instruction::ShiftXLeft1 { x } => {
+                let vx = self.registers.get_register(x);
+                let fv = (u16::from(vx) >> 7) & 1;
+                let res = self.registers.get_register(x).wrapping_shl(1);
+
+                self.registers.set_register(x, res);
+                self.registers.set_register(0xf, u8::try_from(fv).unwrap());
+            }
+            //8xy7
+            Instruction::SubXFromY { x, y } => {
+                let vx = self.registers.get_register(x);
+                let vy = self.registers.get_register(y);
+                let (res, fv) = vy.overflowing_sub(vx);
+                self.registers.set_register(x, res);
+                self.registers.set_register(0xf, u8::from(!fv));
+            }
+
+            //9XY0
+            Instruction::SkipNextInstructionIfXIsNotY { x, y } => {
+                let vx = self.registers.get_register(x);
+                let vy = self.registers.get_register(y);
+                if vx != vy {
+                    self.program_counter += 2;
                 }
-                //00EE
-                Instruction::ReturnFromSubroutine => {
-                    self.stackpointer -= 1;
-                    self.program_counter = self.stack.get(self.stackpointer); //self.stack.values[self.stackpointer as usize];
-                }
-                //1NNN
-                Instruction::Jump { nnn } => {
-                    self.program_counter = nnn;
-                }
-                //2NNN
-                Instruction::CallSubroutineAtNNN { nnn } => {
-                    self.stack.set(self.stackpointer, self.program_counter); //.values[self.stackpointer as usize] = self.program_counter;
-                    self.stackpointer += 1;
-                    self.program_counter = nnn;
-                }
-                //3XKK
-                Instruction::SkipNextInstructionIfXIsKK { x, kk } => {
-                    let vx = self.registers.get_register(x);
-                    if vx == kk {
-                        self.program_counter += 2;
+            }
+            //ANNN
+            Instruction::SetIndexRegister { nnn } => {
+                self.registers.set_index_register(nnn);
+            }
+            //BNNN
+            Instruction::JumpToAddressPlusV0 { nnn } => {
+                let v0 = u16::from(self.registers.get_register(0) & 0xf); //(self.registers.get_register(0) & 0xf) as u16;
+                self.program_counter = nnn + v0;
+            }
+            //cxkk
+            Instruction::SetXToRandom { x, kk } => {
+                let random_byte: u8 = self.rng.random();
+                self.registers.set_register(x, random_byte & kk);
+            }
+            //DXYN
+            Instruction::Display { x, y, n } => {
+                //drawing at (start_x, start_y) on the display, wraps around if out of bounds
+                let start_x = (self.registers.get_register(x) % DISPLAY_WIDTH) as usize;
+                let start_y = (self.registers.get_register(y) % DISPLAY_HEIGHT) as usize;
+
+                let sprite_start = self.registers.get_index_register() as usize;
+                self.registers.set_register(0xF, 0);
+
+                //move over all rows of the sprite (it has n rows)
+                for sprite_row in 0..n as usize {
+                    if sprite_start + sprite_row >= RAM_SIZE as usize {
+                        return;
                     }
-                }
-                //4XKK
-                Instruction::SkipNextInstructionIfXIsNotKK { x, kk } => {
-                    let vx = self.registers.get_register(x);
+                    //bytes[sprite_start + sprite_row];
+                    let sprite = self.memory.bytes[sprite_start + sprite_row];
+                    //what is the sprite?
+                    for sprite_column in 0..8 {
+                        let pixel_row = start_x + sprite_column;
+                        let pixel_column = start_y + sprite_row;
 
-                    if vx != kk {
-                        self.program_counter += 2;
-                    }
-                }
-                //5XY0
-                Instruction::SkipNextInstructionIfXIsY { x, y } => {
-                    let vx = self.registers.get_register(x);
-                    let vy = self.registers.get_register(y);
+                        let sprite_pixel_set = sprite >> (7 - sprite_column) & 1 == 1;
 
-                    if vx == vy {
-                        self.program_counter += 2;
-                    }
-                }
-                //6XKK
-                Instruction::LoadRegisterX { x, kk } => {
-                    self.registers.set_register(x, kk);
-                }
-                //7XKK
-                Instruction::AddToRegisterX { x, kk } => {
-                    let vx = self.registers.get_register(x);
-
-                    let (tmp, _overflow) = vx.overflowing_add(kk);
-                    self.registers.set_register(x, tmp);
-                }
-                //8xy0
-                Instruction::LoadRegisterXIntoY { x, y } => {
-                    let vy = self.registers.get_register(y);
-                    self.registers.set_register(x, vy);
-                }
-                //8xy1
-                Instruction::LoadXOrYinX { x, y } => {
-                    let vx = self.registers.get_register(x);
-                    let vy = self.registers.get_register(y);
-                    self.registers.set_register(x, vx | vy);
-                }
-                //8xy2
-                Instruction::LoadXAndYInX { x, y } => {
-                    let vx = self.registers.get_register(x);
-                    let vy = self.registers.get_register(y);
-
-                    self.registers.set_register(x, vx & vy);
-                }
-                //8xy3
-                Instruction::LoadXXorYInX { x, y } => {
-                    let vx = self.registers.get_register(x);
-                    let vy = self.registers.get_register(y);
-                    self.registers.set_register(x, vx ^ vy);
-                }
-                //8xy4
-                Instruction::AddYToX { x, y } => {
-                    let vx = self.registers.get_register(x);
-                    let vy = self.registers.get_register(y);
-
-                    let (res, fv) = vy.overflowing_add(vx);
-                    self.registers.set_register(x, res);
-                    //u8::from(fv)
-                    self.registers.set_register(0xf, u8::from(fv));
-                }
-
-                //8xy5
-                Instruction::SubYFromX { x, y } => {
-                    let vx = self.registers.get_register(x);
-                    let vy = self.registers.get_register(y);
-
-                    let (res, fv) = vx.overflowing_sub(vy);
-                    self.registers.set_register(x, res);
-                    self.registers.set_register(0xf, u8::from(!fv));
-                }
-
-                //8xy6
-                Instruction::ShiftXRight1 { x } => {
-                    let vx = self.registers.get_register(x);
-                    let vf = u8::from(vx & 1 == 1);
-
-                    self.registers.set_register(x, vx.overflowing_shr(1).0);
-                    self.registers.set_register(0xF, vf);
-                }
-
-                //8xyE
-                Instruction::ShiftXLeft1 { x } => {
-                    let vx = self.registers.get_register(x);
-                    let fv = (u16::from(vx) >> 7) & 1;
-                    let res = self.registers.get_register(x).wrapping_shl(1);
-
-                    self.registers.set_register(x, res);
-                    self.registers.set_register(0xf, u8::try_from(fv).unwrap());
-                }
-                //8xy7
-                Instruction::SubXFromY { x, y } => {
-                    let vx = self.registers.get_register(x);
-                    let vy = self.registers.get_register(y);
-                    let (res, fv) = vy.overflowing_sub(vx);
-                    self.registers.set_register(x, res);
-                    self.registers.set_register(0xf, u8::from(!fv));
-                }
-
-                //9XY0
-                Instruction::SkipNextInstructionIfXIsNotY { x, y } => {
-                    let vx = self.registers.get_register(x);
-                    let vy = self.registers.get_register(y);
-                    if vx != vy {
-                        self.program_counter += 2;
-                    }
-                }
-                //ANNN
-                Instruction::SetIndexRegister { nnn } => {
-                    self.registers.set_index_register(nnn);
-                }
-                //BNNN
-                Instruction::JumpToAddressPlusV0 { nnn } => {
-                    let v0 = u16::from(self.registers.get_register(0) & 0xf); //(self.registers.get_register(0) & 0xf) as u16;
-                    self.program_counter = nnn + v0;
-                }
-                //cxkk
-                Instruction::SetXToRandom { x, kk } => {
-                    let random_byte: u8 = self.rng.random();
-                    self.registers.set_register(x, random_byte & kk);
-                }
-                //DXYN
-                Instruction::Display { x, y, n } => {
-                    //drawing at (start_x, start_y) on the display, wraps around if out of bounds
-                    let start_x = (self.registers.get_register(x) % DISPLAY_WIDTH) as usize;
-                    let start_y = (self.registers.get_register(y) % DISPLAY_HEIGHT) as usize;
-
-                    let sprite_start = self.registers.get_index_register() as usize;
-                    self.registers.set_register(0xF, 0);
-
-                    //move over all rows of the sprite (it has n rows)
-                    for sprite_row in 0..n as usize {
-                        if sprite_start + sprite_row >= RAM_SIZE as usize {
-                            return;
-                        }
-                        //bytes[sprite_start + sprite_row];
-                        let sprite = self.memory.bytes[sprite_start + sprite_row];
-                        //what is the sprite?
-                        for sprite_column in 0..8 {
-                            let pixel_row = start_x + sprite_column;
-                            let pixel_column = start_y + sprite_row;
-
-                            let sprite_pixel_set = sprite >> (7 - sprite_column) & 1 == 1;
-
-                            //check so as to *not* draw out of bounds of the display
-                            if pixel_row < u16::from(DISPLAY_WIDTH).into()
-                                && u16::try_from(pixel_column).unwrap() < u16::from(DISPLAY_HEIGHT)
-                            {
-                                if self.display[pixel_column][pixel_row] && sprite_pixel_set {
-                                    self.registers.set_register(0xf, 1);
-                                }
-                                self.display[pixel_column][pixel_row] ^= sprite_pixel_set;
+                        //check so as to *not* draw out of bounds of the display
+                        if pixel_row < u16::from(DISPLAY_WIDTH).into()
+                            && u16::try_from(pixel_column).unwrap() < u16::from(DISPLAY_HEIGHT)
+                        {
+                            if self.display[pixel_column][pixel_row] && sprite_pixel_set {
+                                self.registers.set_register(0xf, 1);
                             }
+                            self.display[pixel_column][pixel_row] ^= sprite_pixel_set;
                         }
                     }
                 }
-                //exa1
-                Instruction::SkipIfVxNotPressed { x } => {
+            }
+            //exa1
+            Instruction::SkipIfVxNotPressed { x } => {
+                //@TODO: check behavior
+                if !self.keyboard[x as usize] {
+                    self.program_counter += 2;
+                }
+            }
+            //ex9e
+            Instruction::SkipIfVxPressed { x } => {
+                //@TODO: check behavior
+                if self.keyboard[x as usize] {
+                    self.program_counter += 2;
+                }
+            }
+            //fx0a
+            Instruction::WaitForKeyPressed { x } => {
+                match self.get_pressed_key() {
                     //@TODO: check behavior
-                    if !self.keyboard[x as usize] {
-                        self.program_counter += 2;
-                    }
-                }
-                //ex9e
-                Instruction::SkipIfVxPressed { x } => {
-                    //@TODO: check behavior
-                    if self.keyboard[x as usize] {
-                        self.program_counter += 2;
-                    }
-                }
-                //fx0a
-                Instruction::WaitForKeyPressed { x } => {
-                    match self.get_pressed_key() {
-                        //@TODO: check behavior
-                        //Do not advance the program counter, the entire system must wait for a key to be pressed
-                        None => self.program_counter -= 2,
-                        //Original cosmac vip only registered a kley when it was pressed *and* released
-                        Some(x) => {}
-                    }
-                }
-                //fx07
-                Instruction::SetXToDelayTimer { x } => {
-                    let vdt = self.registers.get_delay_timer();
-                    self.registers.set_register(x, vdt);
-                }
-                //fx15
-                Instruction::SetDelayTimerToX { x } => {
-                    let vx = self.registers.get_register(x);
-                    self.registers.set_delay_timer(vx);
-                }
-                Instruction::SetSoundTimerToX { x } => {
-                    let vx = self.registers.get_register(x);
-                    self.registers.set_sound_timer(vx);
-                }
-                //fx1E
-                Instruction::AddXtoI { x } => {
-                    let vx = u16::from(self.registers.get_register(x));
-                    let vi = self.registers.get_index_register();
-                    let added = vi + vx;
-
-                    self.registers.set_index_register(added);
-                }
-                //fx29
-                Instruction::SetIToSpriteX { x } => {
-                    let vx = u16::from(self.registers.get_register(x) * 5);
-                    //the sprite at *index* x, not location x.
-                    self.registers.set_index_register(vx);
-                }
-                Instruction::LoadBCDOfX { x } => {
-                    let vx = self.registers.get_register(x);
-                    let store_index = self.registers.get_index_register();
-                    self.memory.set(store_index, vx / 100);
-                    self.memory.set(store_index + 1, (vx % 100) / 10);
-                    self.memory.set(store_index + 2, (vx % 100) % 10);
-                }
-                //fx55
-                Instruction::Write0ThroughX { x } => {
-                    let vi = self.registers.get_index_register();
-
-                    for register in 0..=x {
-                        let register_value = self.registers.get_register(register);
-                        self.memory.set(vi + u16::from(register), register_value);
-                    }
-                }
-                //fx65
-                Instruction::Load0ThroughX { x } => {
-                    let vi = self.registers.get_index_register();
-                    for i in 0..=x {
-                        self.registers
-                            .set_register(i, self.memory.get_byte(vi + u16::from(i)));
-                    }
+                    //Do not advance the program counter, the entire system must wait for a key to be pressed
+                    None => self.program_counter -= 2,
+                    //Original cosmac vip only registered a kley when it was pressed *and* released
+                    Some(x) => {}
                 }
             }
-        }
-        pub fn get_pressed_key(&self) -> Option<usize> {
-            self.keyboard
-                .iter()
-                .position(|button_pressed| *button_pressed)
-        }
-
-        //this should be part of an interface somehow, maybe a trait that lets external programs set the keys for the emulator
-        pub fn set_pressed_key(&mut self, key: usize) {
-            if !self.keyboard[key] {
-                self.keyboard[key] = true;
+            //fx07
+            Instruction::SetXToDelayTimer { x } => {
+                let vdt = self.registers.get_delay_timer();
+                self.registers.set_register(x, vdt);
             }
-        }
-
-        pub fn get_display_contents(
-            &self,
-        ) -> [[bool; DISPLAY_WIDTH as usize]; DISPLAY_HEIGHT as usize] {
-            self.display
-        }
-        /// A single cpu cycle, fetches, decodes, executes opcodes and
-        /// decrements the timers if relevant. also updates the program counter
-        pub fn cycle(&mut self) {
-            let opcode = self.fetch();
-            self.program_counter += 2;
-
-            let instruction = Instruction::new(opcode);
-            self.execute(&instruction);
-
-            self.registers.decrement_sound_timer();
-            self.registers.decrement_delay_timer();
-        }
-
-        /// Creates a new cpu object, with the contents of a rom file loaded in to memory
-        pub fn new(rom: &RomBuffer) -> Self {
-            let display = [[false; DISPLAY_WIDTH as usize]; DISPLAY_HEIGHT as usize];
-            let program_counter = ROM_START_ADDRESS;
-            let registers = Registers::default();
-            let keyboard = [false; 16];
-            let quirks = Quirks::default();
-            let rng = ChaCha8Rng::seed_from_u64(2);
-            let mut memory = Ram::with_fonts();
-
-            for (x, y) in rom.contents().iter().enumerate() {
-                memory.set(ROM_START_ADDRESS + x as u16, *y);
+            //fx15
+            Instruction::SetDelayTimerToX { x } => {
+                let vx = self.registers.get_register(x);
+                self.registers.set_delay_timer(vx);
             }
+            Instruction::SetSoundTimerToX { x } => {
+                let vx = self.registers.get_register(x);
+                self.registers.set_sound_timer(vx);
+            }
+            //fx1E
+            Instruction::AddXtoI { x } => {
+                let vx = u16::from(self.registers.get_register(x));
+                let vi = self.registers.get_index_register();
+                let added = vi + vx;
 
-            let stack = Stack::default();
+                self.registers.set_index_register(added);
+            }
+            //fx29
+            Instruction::SetIToSpriteX { x } => {
+                let vx = u16::from(self.registers.get_register(x) * 5);
+                //the sprite at *index* x, not location x.
+                self.registers.set_index_register(vx);
+            }
+            Instruction::LoadBCDOfX { x } => {
+                let vx = self.registers.get_register(x);
+                let store_index = self.registers.get_index_register();
+                self.memory.set(store_index, vx / 100);
+                self.memory.set(store_index + 1, (vx % 100) / 10);
+                self.memory.set(store_index + 2, (vx % 100) % 10);
+            }
+            //fx55
+            Instruction::Write0ThroughX { x } => {
+                let vi = self.registers.get_index_register();
 
-            Self {
-                display,
-                program_counter,
-                registers,
-                keyboard,
-                quirks,
-                rng,
-                memory,
-                stack,
-                stackpointer: 0,
+                for register in 0..=x {
+                    let register_value = self.registers.get_register(register);
+                    self.memory.set(vi + u16::from(register), register_value);
+                }
+            }
+            //fx65
+            Instruction::Load0ThroughX { x } => {
+                let vi = self.registers.get_index_register();
+                for i in 0..=x {
+                    self.registers
+                        .set_register(i, self.memory.get_byte(vi + u16::from(i)));
+                }
             }
         }
     }
+    pub fn get_pressed_key(&self) -> Option<usize> {
+        self.keyboard
+            .iter()
+            .position(|button_pressed| *button_pressed)
+    }
 
-    #[allow(non_snake_case)]
-    #[cfg(test)]
-    mod tests {
-        use super::*;
-        use crate::constants::NUM_REGISTERS;
+    //this should be part of an interface somehow, maybe a trait that lets external programs set the keys for the emulator
+    pub fn set_pressed_key(&mut self, key: usize) {
+        if !self.keyboard[key] {
+            self.keyboard[key] = true;
+        }
+    }
 
-        #[test]
-        fn it_can_initialize() {
-            let buffer = RomBuffer::new("assets/1-chip8-logo.8o");
-            let cpu = Cpu::new(&buffer);
-            assert!(cpu.program_counter == ROM_START_ADDRESS);
+    pub fn get_display_contents(
+        &self,
+    ) -> [[bool; DISPLAY_WIDTH as usize]; DISPLAY_HEIGHT as usize] {
+        self.display
+    }
+    /// A single cpu cycle, fetches, decodes, executes opcodes and
+    /// decrements the timers if relevant. also updates the program counter
+    pub fn cycle(&mut self) {
+        let opcode = self.fetch();
+        self.program_counter += 2;
+
+        let instruction = Instruction::new(opcode);
+        self.execute(&instruction);
+
+        self.registers.decrement_sound_timer();
+        self.registers.decrement_delay_timer();
+    }
+
+    /// Creates a new cpu object, with the contents of a rom file loaded in to memory
+    pub fn new(rom: &RomBuffer) -> Self {
+        let display = [[false; DISPLAY_WIDTH as usize]; DISPLAY_HEIGHT as usize];
+        let program_counter = ROM_START_ADDRESS;
+        let registers = Registers::default();
+        let keyboard = [false; 16];
+        let quirks = Quirks::default();
+        let rng = ChaCha8Rng::seed_from_u64(2);
+        let mut memory = Ram::with_fonts();
+
+        for (x, y) in rom.contents().iter().enumerate() {
+            memory.set(ROM_START_ADDRESS + x as u16, *y);
         }
 
-        #[test]
-        fn it_can_fetch_instruction() {
-            let buffer = RomBuffer::new("assets/1-chip8-logo.8o");
-            let cpu = Cpu::new(&buffer);
+        let stack = Stack::default();
+
+        Self {
+            display,
+            program_counter,
+            registers,
+            keyboard,
+            quirks,
+            rng,
+            memory,
+            stack,
+            stackpointer: 0,
+        }
+    }
+}
+
+#[allow(non_snake_case)]
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::constants::NUM_REGISTERS;
+
+    #[test]
+    fn it_can_initialize() {
+        let buffer = RomBuffer::new("assets/1-chip8-logo.8o");
+        let cpu = Cpu::new(&buffer);
+        assert!(cpu.program_counter == ROM_START_ADDRESS);
+    }
+
+    #[test]
+    fn it_can_fetch_instruction() {
+        let buffer = RomBuffer::new("assets/1-chip8-logo.8o");
+        let cpu = Cpu::new(&buffer);
         assert!(cpu.fetch() == 0x2320);
     }
 
@@ -842,4 +842,3 @@
         assert!(cpu.registers.get_register(2) == 0x03);
     }
 }
-

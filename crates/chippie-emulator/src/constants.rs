@@ -10,4 +10,3 @@ pub const CYCLES_PER_FRAME: usize = 5;
 pub const ROM_START_ADDRESS: u16 = 0x200;
 /// Amount of registers CHIP-8 has
 pub const NUM_REGISTERS: u8 = 16;
-
