@@ -11,5 +11,6 @@ edition = "2024"
 [workspace]
 members = [
     "crates/chippie-emulator",
+    "crates/chippie-gui",
 ]
 
