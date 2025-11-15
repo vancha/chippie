@@ -1,4 +1,5 @@
 // Holds the data from a chip8 file as a vec of bytes
+#[derive(Default)]
 pub struct RomBuffer {
     buffer: Vec<u8>,
 }
