@@ -7,6 +7,8 @@ use crate::stack::Stack;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 
+pub type Framebuffer = [[bool; DISPLAY_WIDTH as usize]; DISPLAY_HEIGHT as usize];
+
 #[derive(Default)]
 struct Quirks {
     shift_quirk: bool,
@@ -20,8 +22,8 @@ struct Quirks {
 
 /// The main cpu,
 pub struct Cpu {
-    /// A 2d array of booleans, representing the black and white pixels for the chip8 display
-    display: [[bool; DISPLAY_WIDTH as usize]; DISPLAY_HEIGHT as usize],
+    /// A 2d array of booleans, representing the black and white pixels for the chip8 framebuffer
+    framebuffer: Framebuffer,
     ///Program counter, used to keep track of what to fetch,decode and execute from ram, initialized at 0x200
     program_counter: u16,
     /// A list of "buttons", for the keyboard. set to true when pressed, false otherwise
@@ -54,7 +56,7 @@ impl Cpu {
             }
             //00E0
             Instruction::ClearScreen => {
-                self.display
+                self.framebuffer
                     .iter_mut()
                     .for_each(|x| *x = [false; DISPLAY_WIDTH as usize]);
             }
@@ -204,7 +206,7 @@ impl Cpu {
             }
             //DXYN
             Instruction::Display { x, y, n } => {
-                //drawing at (start_x, start_y) on the display, wraps around if out of bounds
+                //drawing at (start_x, start_y) on the framebuffer, wraps around if out of bounds
                 let start_x = (self.registers.get_register(x) % DISPLAY_WIDTH) as usize;
                 let start_y = (self.registers.get_register(y) % DISPLAY_HEIGHT) as usize;
 
@@ -225,14 +227,14 @@ impl Cpu {
 
                         let sprite_pixel_set = sprite >> (7 - sprite_column) & 1 == 1;
 
-                        //check so as to *not* draw out of bounds of the display
+                        //check so as to *not* draw out of bounds of the framebuffer
                         if pixel_row < u16::from(DISPLAY_WIDTH).into()
                             && u16::try_from(pixel_column).unwrap() < u16::from(DISPLAY_HEIGHT)
                         {
-                            if self.display[pixel_column][pixel_row] && sprite_pixel_set {
+                            if self.framebuffer[pixel_column][pixel_row] && sprite_pixel_set {
                                 self.registers.set_register(0xf, 1);
                             }
-                            self.display[pixel_column][pixel_row] ^= sprite_pixel_set;
+                            self.framebuffer[pixel_column][pixel_row] ^= sprite_pixel_set;
                         }
                     }
                 }
@@ -328,10 +330,8 @@ impl Cpu {
         }
     }
 
-    pub fn get_display_contents(
-        &self,
-    ) -> [[bool; DISPLAY_WIDTH as usize]; DISPLAY_HEIGHT as usize] {
-        self.display
+    pub fn get_framebuffer(&self) -> &Framebuffer {
+        &self.framebuffer
     }
     /// A single cpu cycle, fetches, decodes, executes opcodes and
     /// decrements the timers if relevant. also updates the program counter
@@ -348,7 +348,7 @@ impl Cpu {
 
     /// Creates a new cpu object, with the contents of a rom file loaded in to memory
     pub fn new(rom: &RomBuffer) -> Self {
-        let display = [[false; DISPLAY_WIDTH as usize]; DISPLAY_HEIGHT as usize];
+        let framebuffer = [[false; DISPLAY_WIDTH as usize]; DISPLAY_HEIGHT as usize];
         let program_counter = ROM_START_ADDRESS;
         let registers = Registers::default();
         let keyboard = [false; 16];
@@ -363,7 +363,7 @@ impl Cpu {
         let stack = Stack::default();
 
         Self {
-            display,
+            framebuffer,
             program_counter,
             registers,
             keyboard,
@@ -399,11 +399,11 @@ mod tests {
     // instructions in order of https://www.cs.columbia.edu/~sedwards/classes/2016/4840-spring/designs/Chip8.pdf
     #[test]
     fn executes_00E0() {
-        // Clears the display
+        // Clears the framebuffer
         let mut cpu = Cpu::new(&RomBuffer::from_bytes(vec![0x00, 0xE0]));
-        cpu.display[0][0] = true;
+        cpu.framebuffer[0][0] = true;
         cpu.cycle();
-        assert!(cpu.display[0][0] == false);
+        assert!(cpu.framebuffer[0][0] == false);
     }
 
     #[test]
@@ -682,7 +682,7 @@ mod tests {
 
         //Given all this, chip8 should put 8 ones at (2,2) on the display
         cpu.cycle();
-        let byte_of_ones = cpu.get_display_contents()[2];
+        let byte_of_ones = cpu.get_framebuffer()[2];
         let mut what_it_should_look_like = [false; 64];
         what_it_should_look_like[..10]
             .copy_from_slice(&[false, false, true, true, true, true, true, true, true, true]); //this is what the second column should look like
