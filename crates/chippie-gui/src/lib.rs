@@ -4,7 +4,7 @@ use std::rc::Rc;
 use iced::mouse::Cursor;
 use iced::time;
 use iced::widget::{canvas, column};
-use iced::{Color, Element, Fill, Point, Rectangle, Renderer, Subscription, Theme};
+use iced::{Color, Element, Fill, Point, Rectangle, Renderer, Size, Subscription, Theme};
 
 use chippie_emulator::{Cpu, DISPLAY_HEIGHT, DISPLAY_WIDTH, Framebuffer, RomBuffer};
 
@@ -40,7 +40,7 @@ impl Default for Application {
         let rom = RomBuffer::default();
         Self {
             cpu: Cpu::new(&rom, Rc::clone(&framebuffer)),
-            display: Display::new(framebuffer),
+            display: Display::new(DISPLAY_HEIGHT.into(), DISPLAY_WIDTH.into(), framebuffer),
         }
     }
 }
@@ -51,12 +51,21 @@ pub enum Message {
 }
 
 struct Display {
+    rows: usize,
+    columns: usize,
     framebuffer: Rc<RefCell<Framebuffer>>,
 }
 
 impl Display {
-    pub fn new(framebuffer: Rc<RefCell<Framebuffer>>) -> Self {
-        Self { framebuffer }
+    pub fn new(rows: usize, columns: usize, framebuffer: Rc<RefCell<Framebuffer>>) -> Self {
+        assert!(rows == framebuffer.borrow_mut().len());
+        // TODO: add checks for column sizes
+
+        Self {
+            rows,
+            columns,
+            framebuffer,
+        }
     }
 
     pub fn view(&self) -> Element<'_, Message> {
@@ -75,11 +84,30 @@ impl canvas::Program<Message> for Display {
         bounds: Rectangle,
         _cursor: Cursor,
     ) -> Vec<canvas::Geometry> {
+        let cell_size = Size::new(
+            bounds.width / self.columns as f32,
+            bounds.height / self.rows as f32,
+        );
         let mut frame = canvas::Frame::new(renderer, bounds.size());
 
-        // The display has to be black by default
+        // Fill frames background with black color
         let background = canvas::Path::rectangle(Point::ORIGIN, bounds.size());
         frame.fill(&background, Color::BLACK);
+
+        // Find all the "dark" pixels and draw black rectangles at the right places
+        let framebuffer = self.framebuffer.borrow();
+        for column in 0..self.columns {
+            for row in 0..self.rows {
+                if !framebuffer[row][column] {
+                    continue;
+                }
+
+                let x = column as f32 * cell_size.width;
+                let y = row as f32 * cell_size.height;
+                let cell = canvas::Path::rectangle(Point::new(x, y), cell_size);
+                frame.fill(&cell, Color::WHITE);
+            }
+        }
 
         vec![frame.into_geometry()]
     }
