@@ -2,8 +2,9 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use iced::mouse::Cursor;
+use iced::time;
 use iced::widget::{canvas, column};
-use iced::{Color, Element, Fill, Point, Rectangle, Renderer, Theme};
+use iced::{Color, Element, Fill, Point, Rectangle, Renderer, Subscription, Theme};
 
 use chippie_emulator::{Cpu, DISPLAY_HEIGHT, DISPLAY_WIDTH, Framebuffer, RomBuffer};
 
@@ -20,7 +21,15 @@ impl Application {
             .into()
     }
 
-    pub fn update(&mut self, message: Message) {}
+    pub fn update(&mut self, message: Message) {
+        match message {
+            Message::Tick => self.cpu.cycle(),
+        }
+    }
+
+    pub fn subscription(&self) -> Subscription<Message> {
+        time::every(time::Duration::new(1, 0)).map(|_| Message::Tick)
+    }
 }
 
 impl Default for Application {
@@ -37,7 +46,9 @@ impl Default for Application {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum Message {}
+pub enum Message {
+    Tick,
+}
 
 struct Display {
     framebuffer: Rc<RefCell<Framebuffer>>,
@@ -75,5 +86,7 @@ impl canvas::Program<Message> for Display {
 }
 
 pub fn run() -> iced::Result {
-    iced::run("Chippie", Application::update, Application::view)
+    iced::application("Chippie", Application::update, Application::view)
+        .subscription(Application::subscription)
+        .run()
 }
