@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use iced::mouse::Cursor;
 use iced::widget::{canvas, column};
-use iced::{Element, Fill, Rectangle, Renderer, Theme};
+use iced::{Color, Element, Fill, Point, Rectangle, Renderer, Theme};
 
 use chippie_emulator::{Cpu, DISPLAY_HEIGHT, DISPLAY_WIDTH, Framebuffer, RomBuffer};
 
@@ -62,7 +62,12 @@ impl canvas::Program<Message> for Display {
         bounds: Rectangle,
         _cursor: Cursor,
     ) -> Vec<canvas::Geometry> {
-        let frame = canvas::Frame::new(renderer, bounds.size());
+        let mut frame = canvas::Frame::new(renderer, bounds.size());
+
+        // The display has to be black by default
+        let background = canvas::Path::rectangle(Point::ORIGIN, bounds.size());
+        frame.fill(&background, Color::BLACK);
+
         vec![frame.into_geometry()]
     }
 }

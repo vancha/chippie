@@ -492,6 +492,7 @@ dependencies = [
 name = "chippie-gui"
 version = "0.1.0"
 dependencies = [
+ "chippie-emulator",
  "iced",
 ]
 
