@@ -20,6 +20,12 @@ pub struct Application {
 }
 
 impl Application {
+    pub fn run() -> iced::Result {
+        iced::application("Chippie", Application::update, Application::view)
+            .subscription(Application::subscription)
+            .run()
+    }
+
     pub fn view(&self) -> Element<'_, Message> {
         column![self.display.view(),]
             .width(Fill)
@@ -53,10 +59,4 @@ impl Default for Application {
             ),
         }
     }
-}
-
-pub fn run() -> iced::Result {
-    iced::application("Chippie", Application::update, Application::view)
-        .subscription(Application::subscription)
-        .run()
 }

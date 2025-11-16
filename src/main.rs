@@ -1,3 +1,5 @@
+use chippie_gui::Application;
+
 fn main() {
-    let _ = chippie_gui::run();
+    let _ = Application::run();
 }
