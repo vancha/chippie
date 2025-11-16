@@ -9,6 +9,8 @@ use chippie_emulator::Framebuffer;
 
 use crate::Message;
 
+/// A custom widget based on Canvas, which draws *pixels* over a black screen in the natice CHIP-8
+/// resolution.
 pub struct Display {
     rows: usize,
     columns: usize,
@@ -27,6 +29,7 @@ impl Display {
         }
     }
 
+    /// Construct a canvas based on custom drawing logic
     pub fn view(&self) -> Element<'_, Message> {
         canvas::Canvas::new(self).width(Fill).height(Fill).into()
     }
