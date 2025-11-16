@@ -7,6 +7,7 @@ use iced::{Element, Fill, Subscription};
 
 use chippie_emulator::{Cpu, DISPLAY_HEIGHT, DISPLAY_WIDTH, RomBuffer};
 
+mod constants;
 mod widgets;
 
 #[derive(Debug, Clone, Copy)]
@@ -21,7 +22,7 @@ pub struct Application {
 
 impl Application {
     pub fn run() -> iced::Result {
-        iced::application("Chippie", Application::update, Application::view)
+        iced::application(constants::APP_NAME, Application::update, Application::view)
             .subscription(Application::subscription)
             .run()
     }
@@ -40,7 +41,7 @@ impl Application {
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
-        time::every(time::Duration::new(1, 0)).map(|_| Message::Tick)
+        time::every(constants::TICK_INTERVAL).map(|_| Message::Tick)
     }
 }
 
