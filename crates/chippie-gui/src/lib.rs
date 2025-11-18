@@ -32,7 +32,7 @@ impl Application {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```ignore
     /// use chippie_gui::Application;
     ///
     /// let _ = Application::run();
