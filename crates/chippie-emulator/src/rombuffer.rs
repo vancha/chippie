@@ -1,4 +1,5 @@
 // Holds the data from a chip8 file as a vec of bytes
+#[derive(Default)]
 pub struct RomBuffer {
     buffer: Vec<u8>,
 }
@@ -20,16 +21,11 @@ impl TryFrom<&str> for RomBuffer {
     type Error = &'static str;
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         match std::fs::read(value) {
-            Ok(buffer) => {
-                Ok(RomBuffer { buffer })
-            },
-            Err(msg) => {
-                Err("it didn't work :(")
-            },
+            Ok(buffer) => Ok(RomBuffer { buffer }),
+            Err(msg) => Err("it didn't work :("),
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {
