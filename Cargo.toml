@@ -11,7 +11,10 @@ chippie-gui = { path = "./crates/chippie-gui", version = "0.1.0" }
 
 [workspace]
 members = [
-    "crates/chippie-emulator",
-    "crates/chippie-gui",
+    "crates/*",
+]
+default-members = [
+    ".",
+    "crates/*",
 ]
 
