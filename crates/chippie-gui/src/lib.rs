@@ -5,6 +5,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use iced::keyboard;
 use iced::time;
 use iced::widget::column;
 use iced::{Element, Fill, Subscription};
@@ -15,10 +16,12 @@ mod constants;
 mod widgets;
 
 /// Messages that are used for communication between iced widgets.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum Message {
-    /// A messages that is used as a clock source's signal
+    /// A message that is used as a clock source's signal
     Tick,
+    KeyPressed(keyboard::Key),
+    KeyReleased(keyboard::Key),
 }
 
 /// The main application struct, which constructs GUI and reacts on messages
@@ -55,12 +58,18 @@ impl Application {
     pub fn update(&mut self, message: Message) {
         match message {
             Message::Tick => self.cpu.cycle(),
+            Message::KeyPressed(_) => todo!(),
+            Message::KeyReleased(_) => todo!(),
         }
     }
 
     /// Creates a specific task, that is run asynchronously by iced
     pub fn subscription(&self) -> Subscription<Message> {
-        time::every(constants::TICK_INTERVAL).map(|_| Message::Tick)
+        Subscription::batch(vec![
+            keyboard::on_key_press(|key, _| Some(Message::KeyPressed(key))),
+            keyboard::on_key_release(|key, _| Some(Message::KeyReleased(key))),
+            time::every(constants::TICK_INTERVAL).map(|_| Message::Tick),
+        ])
     }
 }
 
