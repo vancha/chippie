@@ -10,7 +10,7 @@ use iced::time;
 use iced::widget::column;
 use iced::{Element, Fill, Subscription};
 
-use chippie_emulator::{Cpu, DISPLAY_HEIGHT, DISPLAY_WIDTH, RomBuffer};
+use chippie_emulator::{Cpu, DISPLAY_HEIGHT, DISPLAY_WIDTH, NUM_KEYS, RomBuffer};
 
 mod constants;
 mod widgets;
@@ -58,8 +58,16 @@ impl Application {
     pub fn update(&mut self, message: Message) {
         match message {
             Message::Tick => self.cpu.cycle(),
-            Message::KeyPressed(_) => todo!(),
-            Message::KeyReleased(_) => todo!(),
+            Message::KeyPressed(key) => {
+                if let Some(index) = Application::to_index(key) {
+                    self.cpu.set_key_state(index, true);
+                }
+            }
+            Message::KeyReleased(key) => {
+                if let Some(index) = Application::to_index(key) {
+                    self.cpu.set_key_state(index, false);
+                }
+            }
         }
     }
 
@@ -70,6 +78,21 @@ impl Application {
             keyboard::on_key_release(|key, _| Some(Message::KeyReleased(key))),
             time::every(constants::TICK_INTERVAL).map(|_| Message::Tick),
         ])
+    }
+
+    /// The function is used to convert iced::keyboard::Key values to key indexes, used inside the
+    /// emulator
+    fn to_index(key: keyboard::Key) -> Option<u8> {
+        match key {
+            keyboard::Key::Character(ch) => {
+                if let Ok(index) = u8::from_str_radix(ch.as_str(), 16) {
+                    if index < NUM_KEYS { Some(index) } else { None }
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
     }
 }
 

@@ -5,7 +5,7 @@ use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 
 use crate::Framebuffer;
-use crate::constants::{DISPLAY_HEIGHT, DISPLAY_WIDTH, RAM_SIZE, ROM_START_ADDRESS};
+use crate::constants::{DISPLAY_HEIGHT, DISPLAY_WIDTH, NUM_KEYS, RAM_SIZE, ROM_START_ADDRESS};
 use crate::instruction::Instruction;
 use crate::ram::Ram;
 use crate::registers::Registers;
@@ -30,7 +30,7 @@ pub struct Cpu {
     ///Program counter, used to keep track of what to fetch,decode and execute from ram, initialized at 0x200
     program_counter: u16,
     /// A list of "buttons", for the keyboard. set to true when pressed, false otherwise
-    keyboard: [bool; 16],
+    keyboard: [bool; NUM_KEYS as usize],
     /// The memory, stores the rom data when loaded from disk
     memory: Ram,
     /// A random number generator. Added for testability reaons as it allows to test all random instructions with a fixed seed
@@ -328,11 +328,10 @@ impl Cpu {
             .position(|button_pressed| *button_pressed)
     }
 
-    //this should be part of an interface somehow, maybe a trait that lets external programs set the keys for the emulator
-    pub fn set_pressed_key(&mut self, key: usize) {
-        if !self.keyboard[key] {
-            self.keyboard[key] = true;
-        }
+    /// Set key's state
+    pub fn set_key_state(&mut self, key: u8, state: bool) {
+        assert!(key <= NUM_KEYS);
+        self.keyboard[key as usize] = state;
     }
 
     /// A single cpu cycle, fetches, decodes, executes opcodes and
