@@ -825,6 +825,7 @@ mod tests {
         );
         cpu.registers.set_delay_timer(0x10);
         cpu.cycle();
+        cpu.decrement_timers();
         //should be equal to delay timer
         assert!(cpu.registers.get_register(0x0) == 0x10);
     }
@@ -854,6 +855,7 @@ mod tests {
         );
         cpu.registers.set_register(0, 125);
         cpu.cycle();
+        cpu.decrement_timers();
         let val = cpu.registers.get_delay_timer();
         //the value is one less than the actual value, because during the cycle the delay timer
         //also gets decremented by one..
@@ -870,6 +872,7 @@ mod tests {
         );
         cpu.registers.set_register(0, 125);
         cpu.cycle();
+        cpu.decrement_timers();
         let val = cpu.registers.get_sound_timer();
         //the value is one less than the actual value, because during the cycle the delay timer
         //also gets decremented by one..
