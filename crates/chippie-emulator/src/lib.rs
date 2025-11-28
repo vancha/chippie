@@ -16,7 +16,7 @@ mod rombuffer;
 mod stack;
 
 // Re-export structs and modules that migth be used by graphics libraries
-pub use constants::{DISPLAY_HEIGHT, DISPLAY_WIDTH};
+pub use constants::{DISPLAY_HEIGHT, DISPLAY_WIDTH, NUM_KEYS};
 pub use cpu::Cpu;
 pub use rombuffer::RomBuffer;
 
