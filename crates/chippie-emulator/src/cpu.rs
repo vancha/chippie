@@ -334,15 +334,18 @@ impl Cpu {
         self.keyboard[key as usize] = state;
     }
 
-    /// A single cpu cycle, fetches, decodes, executes opcodes and
-    /// decrements the timers if relevant. also updates the program counter
+    /// A single cpu cycle, fetches, decodes, executes opcodes
+    /// Also updates the program counter
     pub fn cycle(&mut self) {
         let opcode = self.fetch();
         self.program_counter += 2;
 
         let instruction = Instruction::new(opcode);
         self.execute(&instruction);
+    }
 
+    /// Needs to be called exactly 60 times a second
+    pub fn decrement_timers(&mut self) {
         self.registers.decrement_sound_timer();
         self.registers.decrement_delay_timer();
     }
@@ -971,3 +974,4 @@ mod tests {
         assert!(cpu.registers.get_register(2) == 0x03);
     }
 }
+

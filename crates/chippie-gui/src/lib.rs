@@ -9,11 +9,12 @@ use iced::keyboard;
 use iced::time;
 use iced::widget::{button, column};
 use iced::{Element, Fill, Subscription, Task};
-use rfd::{AsyncFileDialog, FileDialog};
+use rfd::{AsyncFileDialog, FileHandle};
 
 use chippie_emulator::{Cpu, RomBuffer, DISPLAY_HEIGHT, DISPLAY_WIDTH, NUM_KEYS};
 
 mod constants;
+use constants::CYCLES_PER_FRAME;
 mod widgets;
 
 /// Messages that are used for communication between iced widgets.
@@ -23,8 +24,8 @@ pub enum Message {
     Tick,
     KeyPressed(keyboard::Key),
     KeyReleased(keyboard::Key),
-    SelectRomButtonPressed,
-    FileSelected(Option<rfd::FileHandle>),
+    FileSelectButtonClicked,
+    FileSelected(Option<FileHandle>),
 }
 
 /// The main application struct, which constructs GUI and reacts on messages
@@ -53,7 +54,7 @@ impl Application {
     pub fn view(&self) -> Element<'_, Message> {
         column![
             self.display.view(),
-            button("Select Rom").on_press(Message::SelectRomButtonPressed)
+            button("Select Rom").on_press(Message::FileSelectButtonClicked)
         ]
         .width(Fill)
         .height(Fill)
@@ -63,29 +64,43 @@ impl Application {
     /// The function, called by iced when there is a message, queued for this application
     pub fn update(&mut self, message: Message) -> iced::Task<Message> {
         match message {
-            Message::Tick => self.cpu.cycle(),
-            Message::KeyPressed(k) => {
-                if let Some(i) = Self::to_index(k) {
+            Message::Tick => {
+                for _ in 0..CYCLES_PER_FRAME {
+                    self.cpu.cycle();
+                }
+                self.cpu.decrement_timers();
+            }
+            Message::KeyPressed(key) => {
+                if let Some(i) = Self::to_index(key) {
                     self.cpu.set_key_state(i, true)
                 }
             }
-            Message::KeyReleased(k) => {
-                if let Some(i) = Self::to_index(k) {
+            Message::KeyReleased(key) => {
+                if let Some(i) = Self::to_index(key) {
                     self.cpu.set_key_state(i, false)
                 }
             }
 
-            Message::SelectRomButtonPressed => {
-                return Task::perform(AsyncFileDialog::new().pick_file(), Message::FileSelected)
+            Message::FileSelectButtonClicked => {
+                return Task::perform(
+                    AsyncFileDialog::new()
+                        .add_filter("Chip8 ROM files".to_string(), &["ch8", "8o"])
+                        .pick_file(),
+                    Message::FileSelected,
+                )
             }
 
-            Message::FileSelected(Some(path)) => {
-                println!("selected the file: {:?}", path);
+            Message::FileSelected(Some(filehandle)) => {
+                let framebuffer = Rc::new(RefCell::new(
+                    [[false; DISPLAY_WIDTH as usize]; DISPLAY_HEIGHT as usize],
+                ));
+                let rom = RomBuffer::new(filehandle.path().to_str().unwrap());
+                self.cpu = Cpu::new(&rom, Rc::clone(&framebuffer));
+                self.display =
+                    widgets::Display::new(DISPLAY_HEIGHT.into(), DISPLAY_WIDTH.into(), framebuffer);
             }
 
-            Message::FileSelected(None) => {
-                println!("no file selected");
-            }
+            Message::FileSelected(None) => {}
         }
 
         Task::none()

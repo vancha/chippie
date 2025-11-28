@@ -5,6 +5,5 @@ edition = "2024"
 
 [dependencies]
 iced = { version = "0.13.1", features = [ "canvas", "async-std" ] }
-rfd = "0.16.0"
-
 chippie-emulator = { path = "../chippie-emulator" }
+rfd = { version = "0.16.0" }
