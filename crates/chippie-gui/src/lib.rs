@@ -7,12 +7,14 @@ use std::rc::Rc;
 
 use iced::keyboard;
 use iced::time;
-use iced::widget::column;
-use iced::{Element, Fill, Subscription};
+use iced::widget::{button, column};
+use iced::{Element, Fill, Subscription, Task};
+use rfd::{AsyncFileDialog, FileHandle};
 
-use chippie_emulator::{Cpu, DISPLAY_HEIGHT, DISPLAY_WIDTH, NUM_KEYS, RomBuffer};
+use chippie_emulator::{Cpu, RomBuffer, DISPLAY_HEIGHT, DISPLAY_WIDTH, NUM_KEYS};
 
 mod constants;
+use constants::CYCLES_PER_FRAME;
 mod widgets;
 
 /// Messages that are used for communication between iced widgets.
@@ -22,6 +24,8 @@ pub enum Message {
     Tick,
     KeyPressed(keyboard::Key),
     KeyReleased(keyboard::Key),
+    FileSelectButtonClicked,
+    FileSelected(Option<FileHandle>),
 }
 
 /// The main application struct, which constructs GUI and reacts on messages
@@ -48,27 +52,58 @@ impl Application {
 
     /// Creates a full view of the main window
     pub fn view(&self) -> Element<'_, Message> {
-        column![self.display.view(),]
-            .width(Fill)
-            .height(Fill)
-            .into()
+        column![
+            self.display.view(),
+            button("Select Rom").on_press(Message::FileSelectButtonClicked)
+        ]
+        .width(Fill)
+        .height(Fill)
+        .into()
     }
 
     /// The function, called by iced when there is a message, queued for this application
-    pub fn update(&mut self, message: Message) {
+    pub fn update(&mut self, message: Message) -> iced::Task<Message> {
         match message {
-            Message::Tick => self.cpu.cycle(),
+            Message::Tick => {
+                for _ in 0..CYCLES_PER_FRAME {
+                    self.cpu.cycle();
+                }
+                self.cpu.decrement_timers();
+            }
             Message::KeyPressed(key) => {
-                if let Some(index) = Application::to_index(key) {
-                    self.cpu.set_key_state(index, true);
+                if let Some(i) = Self::to_index(key) {
+                    self.cpu.set_key_state(i, true)
                 }
             }
             Message::KeyReleased(key) => {
-                if let Some(index) = Application::to_index(key) {
-                    self.cpu.set_key_state(index, false);
+                if let Some(i) = Self::to_index(key) {
+                    self.cpu.set_key_state(i, false)
                 }
             }
+
+            Message::FileSelectButtonClicked => {
+                return Task::perform(
+                    AsyncFileDialog::new()
+                        .add_filter("Chip8 ROM files".to_string(), &["ch8", "8o"])
+                        .pick_file(),
+                    Message::FileSelected,
+                )
+            }
+
+            Message::FileSelected(Some(filehandle)) => {
+                let framebuffer = Rc::new(RefCell::new(
+                    [[false; DISPLAY_WIDTH as usize]; DISPLAY_HEIGHT as usize],
+                ));
+                let rom = RomBuffer::new(filehandle.path().to_str().unwrap());
+                self.cpu = Cpu::new(&rom, Rc::clone(&framebuffer));
+                self.display =
+                    widgets::Display::new(DISPLAY_HEIGHT.into(), DISPLAY_WIDTH.into(), framebuffer);
+            }
+
+            Message::FileSelected(None) => {}
         }
+
+        Task::none()
     }
 
     /// Creates a specific task, that is run asynchronously by iced
@@ -86,7 +121,11 @@ impl Application {
         match key {
             keyboard::Key::Character(ch) => {
                 if let Ok(index) = u8::from_str_radix(ch.as_str(), 16) {
-                    if index < NUM_KEYS { Some(index) } else { None }
+                    if index < NUM_KEYS {
+                        Some(index)
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
