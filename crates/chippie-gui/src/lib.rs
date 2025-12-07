@@ -33,6 +33,7 @@ pub enum Message {
 pub struct Application {
     cpu: Cpu,
     display: widgets::Display,
+    running: bool,
 }
 
 impl Application {
@@ -74,10 +75,12 @@ impl Application {
     pub fn update(&mut self, message: Message) -> iced::Task<Message> {
         match message {
             Message::Tick => {
-                for _ in 0..CYCLES_PER_FRAME {
-                    self.cpu.cycle();
+                if self.running {
+                    for _ in 0..CYCLES_PER_FRAME {
+                        self.cpu.cycle();
+                    }
+                    self.cpu.decrement_timers();
                 }
-                self.cpu.decrement_timers();
             }
             Message::KeyPressed(key) => {
                 if let Some(i) = Self::to_index(key) {
@@ -89,7 +92,6 @@ impl Application {
                     self.cpu.set_key_state(i, false)
                 }
             }
-
             Message::FileSelectButtonClicked => {
                 return Task::perform(
                     AsyncFileDialog::new()
@@ -98,18 +100,18 @@ impl Application {
                     Message::FileSelected,
                 );
             }
-
-            Message::FileSelected(Some(filehandle)) => {
+            Message::FileSelected(Some(file)) => {
                 let framebuffer = Rc::new(RefCell::new(
                     [[false; DISPLAY_WIDTH as usize]; DISPLAY_HEIGHT as usize],
                 ));
-                let rom = RomBuffer::new(filehandle.path().to_str().unwrap());
+                let rom = RomBuffer::new(file.path().to_str().unwrap());
                 self.cpu = Cpu::new(&rom, Rc::clone(&framebuffer));
                 self.display =
                     widgets::Display::new(DISPLAY_HEIGHT.into(), DISPLAY_WIDTH.into(), framebuffer);
-            }
 
-            Message::FileSelected(None) => {}
+                self.running = true;
+            }
+            _ => {}
         }
 
         Task::none()
@@ -153,6 +155,7 @@ impl Default for Application {
                 DISPLAY_WIDTH.into(),
                 framebuffer,
             ),
+            running: false,
         }
     }
 }
