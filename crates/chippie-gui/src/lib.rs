@@ -9,6 +9,7 @@ use iced::keyboard;
 use iced::time;
 use iced::widget::{button, column};
 use iced::{Element, Fill, Subscription, Task};
+use iced_aw::menu::{Item, Menu, MenuBar};
 use rfd::{AsyncFileDialog, FileHandle};
 
 use chippie_emulator::{Cpu, DISPLAY_HEIGHT, DISPLAY_WIDTH, NUM_KEYS, RomBuffer};
@@ -52,13 +53,21 @@ impl Application {
 
     /// Creates a full view of the main window
     pub fn view(&self) -> Element<'_, Message> {
-        column![
-            self.display.view(),
-            button("Select Rom").on_press(Message::FileSelectButtonClicked)
-        ]
-        .width(Fill)
-        .height(Fill)
-        .into()
+        // Create a menu bar, used to control the state of the emulator
+        let bar = MenuBar::new(vec![Item::with_menu(
+            button("File"),
+            Menu::new(vec![Item::new(
+                button("Select Rom")
+                    .on_press(Message::FileSelectButtonClicked)
+                    .width(Fill),
+            )])
+            .width(180.0),
+        )]);
+
+        column![bar, self.display.view()]
+            .width(Fill)
+            .height(Fill)
+            .into()
     }
 
     /// The function, called by iced when there is a message, queued for this application
