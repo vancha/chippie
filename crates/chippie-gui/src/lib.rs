@@ -11,7 +11,7 @@ use iced::widget::{button, column};
 use iced::{Element, Fill, Subscription, Task};
 use rfd::{AsyncFileDialog, FileHandle};
 
-use chippie_emulator::{Cpu, RomBuffer, DISPLAY_HEIGHT, DISPLAY_WIDTH, NUM_KEYS};
+use chippie_emulator::{Cpu, DISPLAY_HEIGHT, DISPLAY_WIDTH, NUM_KEYS, RomBuffer};
 
 mod constants;
 use constants::CYCLES_PER_FRAME;
@@ -87,7 +87,7 @@ impl Application {
                         .add_filter("Chip8 ROM files".to_string(), &["ch8", "8o"])
                         .pick_file(),
                     Message::FileSelected,
-                )
+                );
             }
 
             Message::FileSelected(Some(filehandle)) => {
@@ -121,11 +121,7 @@ impl Application {
         match key {
             keyboard::Key::Character(ch) => {
                 if let Ok(index) = u8::from_str_radix(ch.as_str(), 16) {
-                    if index < NUM_KEYS {
-                        Some(index)
-                    } else {
-                        None
-                    }
+                    if index < NUM_KEYS { Some(index) } else { None }
                 } else {
                     None
                 }

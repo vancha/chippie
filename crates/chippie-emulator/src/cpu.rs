@@ -977,4 +977,3 @@ mod tests {
         assert!(cpu.registers.get_register(2) == 0x03);
     }
 }
-

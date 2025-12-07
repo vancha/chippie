@@ -50,4 +50,3 @@ impl Registers {
         self.register[register as usize] = value;
     }
 }
-
