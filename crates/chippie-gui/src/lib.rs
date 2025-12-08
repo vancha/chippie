@@ -142,11 +142,15 @@ impl Application {
             Message::FileSelected(Some(file)) => {
                 let rom = RomBuffer::new(file.path().to_str().unwrap());
                 self.cpu = Some(Cpu::new(&rom, Rc::clone(&self.framebuffer)));
-                self.running = true;
+                self.resume();
+            }
+            Message::FileSelected(None) => {
+                if self.cpu.is_some() {
+                    self.resume();
+                }
             }
             Message::PauseRequested => self.pause(),
             Message::ResumeRequested => self.resume(),
-            _ => {}
         }
 
         Task::none()
