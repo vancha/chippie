@@ -140,6 +140,9 @@ impl Application {
                 );
             }
             Message::FileSelected(Some(file)) => {
+                // Clean the framebuffer
+                *self.framebuffer.borrow_mut() = [[false; DISPLAY_WIDTH as usize]; DISPLAY_HEIGHT as usize];
+
                 let rom = RomBuffer::new(file.path().to_str().unwrap());
                 self.cpu = Some(Cpu::new(&rom, Rc::clone(&self.framebuffer)));
                 self.resume();
