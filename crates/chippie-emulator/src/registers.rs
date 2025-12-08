@@ -14,14 +14,6 @@ pub struct Registers {
 }
 
 impl Registers {
-    /*pub fn new() -> Self {
-        Registers {
-            register: [0u8; 16],
-            vindex: 0,
-            delay_timer: 0,
-            sound_timer: 0,
-        }
-    }*/
     pub fn set_index_register(&mut self, value: u16) {
         self.vindex = value;
     }
