@@ -73,12 +73,20 @@ impl Application {
                 Menu::new(vec![
                     Item::new(
                         button("Resume")
-                            .on_press(Message::ResumeRequested)
+                            .on_press_maybe(if self.cpu.is_some() && !self.running {
+                                Some(Message::ResumeRequested)
+                            } else {
+                                None
+                            })
                             .width(Fill),
                     ),
                     Item::new(
                         button("Pause")
-                            .on_press(Message::PauseRequested)
+                            .on_press_maybe(if self.cpu.is_some() && self.running {
+                                Some(Message::PauseRequested)
+                            } else {
+                                None
+                            })
                             .width(Fill),
                     ),
                 ]),
