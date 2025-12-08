@@ -27,6 +27,8 @@ pub enum Message {
     KeyReleased(keyboard::Key),
     FileSelectButtonClicked,
     FileSelected(Option<FileHandle>),
+    PauseRequested,
+    ResumeRequested,
 }
 
 /// The main application struct, which constructs GUI and reacts on messages
@@ -55,15 +57,32 @@ impl Application {
     /// Creates a full view of the main window
     pub fn view(&self) -> Element<'_, Message> {
         // Create a menu bar, used to control the state of the emulator
-        let bar = MenuBar::new(vec![Item::with_menu(
-            button("File"),
-            Menu::new(vec![Item::new(
-                button("Select Rom")
-                    .on_press(Message::FileSelectButtonClicked)
-                    .width(Fill),
-            )])
-            .width(180.0),
-        )]);
+        let bar = MenuBar::new(vec![
+            Item::with_menu(
+                button("File"),
+                Menu::new(vec![Item::new(
+                    button("Select Rom")
+                        .on_press(Message::FileSelectButtonClicked)
+                        .width(Fill),
+                )])
+                .width(180.0),
+            ),
+            Item::with_menu(
+                button("Emulation"),
+                Menu::new(vec![
+                    Item::new(
+                        button("Resume")
+                            .on_press(Message::ResumeRequested)
+                            .width(Fill),
+                    ),
+                    Item::new(
+                        button("Pause")
+                            .on_press(Message::PauseRequested)
+                            .width(Fill),
+                    ),
+                ]),
+            ),
+        ]);
 
         column![bar, self.display.view()]
             .width(Fill)
@@ -98,7 +117,7 @@ impl Application {
             }
             Message::FileSelectButtonClicked => {
                 // Pause the execution
-                self.running = false;
+                self.pause();
 
                 return Task::perform(
                     AsyncFileDialog::new()
@@ -117,6 +136,8 @@ impl Application {
                     widgets::Display::new(DISPLAY_HEIGHT.into(), DISPLAY_WIDTH.into(), framebuffer);
                 self.running = true;
             }
+            Message::PauseRequested => self.pause(),
+            Message::ResumeRequested => self.resume(),
             _ => {}
         }
 
@@ -130,6 +151,16 @@ impl Application {
             keyboard::on_key_release(|key, _| Some(Message::KeyReleased(key))),
             time::every(constants::TICK_INTERVAL).map(|_| Message::Tick),
         ])
+    }
+
+    /// This function pauses the execution of the program
+    fn pause(&mut self) {
+        self.running = false;
+    }
+
+    /// This function resumes the execution of the program
+    fn resume(&mut self) {
+        self.running = true;
     }
 
     /// The function is used to convert iced::keyboard::Key values to key indexes, used inside the
