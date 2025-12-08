@@ -83,16 +83,23 @@ impl Application {
                 }
             }
             Message::KeyPressed(key) => {
-                if let Some(i) = Self::to_index(key) {
+                if self.running
+                    && let Some(i) = Self::to_index(key)
+                {
                     self.cpu.set_key_state(i, true)
                 }
             }
             Message::KeyReleased(key) => {
-                if let Some(i) = Self::to_index(key) {
+                if self.running
+                    && let Some(i) = Self::to_index(key)
+                {
                     self.cpu.set_key_state(i, false)
                 }
             }
             Message::FileSelectButtonClicked => {
+                // Pause the execution
+                self.running = false;
+
                 return Task::perform(
                     AsyncFileDialog::new()
                         .add_filter("Chip8 ROM files".to_string(), &["ch8", "8o"])
@@ -108,7 +115,6 @@ impl Application {
                 self.cpu = Cpu::new(&rom, Rc::clone(&framebuffer));
                 self.display =
                     widgets::Display::new(DISPLAY_HEIGHT.into(), DISPLAY_WIDTH.into(), framebuffer);
-
                 self.running = true;
             }
             _ => {}
