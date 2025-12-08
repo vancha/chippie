@@ -12,7 +12,7 @@ use iced::{Element, Fill, Subscription, Task};
 use iced_aw::menu::{Item, Menu, MenuBar};
 use rfd::{AsyncFileDialog, FileHandle};
 
-use chippie_emulator::{Cpu, DISPLAY_HEIGHT, DISPLAY_WIDTH, NUM_KEYS, RomBuffer};
+use chippie_emulator::{Cpu, DISPLAY_HEIGHT, DISPLAY_WIDTH, Framebuffer, NUM_KEYS, RomBuffer};
 
 mod constants;
 use constants::CYCLES_PER_FRAME;
@@ -33,8 +33,9 @@ pub enum Message {
 
 /// The main application struct, which constructs GUI and reacts on messages
 pub struct Application {
-    cpu: Cpu,
+    cpu: Option<Cpu>,
     display: widgets::Display,
+    framebuffer: Rc<RefCell<Framebuffer>>,
     running: bool,
 }
 
@@ -94,25 +95,29 @@ impl Application {
     pub fn update(&mut self, message: Message) -> iced::Task<Message> {
         match message {
             Message::Tick => {
-                if self.running {
+                if self.running
+                    && let Some(cpu) = &mut self.cpu
+                {
                     for _ in 0..CYCLES_PER_FRAME {
-                        self.cpu.cycle();
+                        cpu.cycle();
                     }
-                    self.cpu.decrement_timers();
+                    cpu.decrement_timers();
                 }
             }
             Message::KeyPressed(key) => {
                 if self.running
+                    && let Some(cpu) = &mut self.cpu
                     && let Some(i) = Self::to_index(key)
                 {
-                    self.cpu.set_key_state(i, true)
+                    cpu.set_key_state(i, true)
                 }
             }
             Message::KeyReleased(key) => {
                 if self.running
+                    && let Some(cpu) = &mut self.cpu
                     && let Some(i) = Self::to_index(key)
                 {
-                    self.cpu.set_key_state(i, false)
+                    cpu.set_key_state(i, false)
                 }
             }
             Message::FileSelectButtonClicked => {
@@ -127,13 +132,8 @@ impl Application {
                 );
             }
             Message::FileSelected(Some(file)) => {
-                let framebuffer = Rc::new(RefCell::new(
-                    [[false; DISPLAY_WIDTH as usize]; DISPLAY_HEIGHT as usize],
-                ));
                 let rom = RomBuffer::new(file.path().to_str().unwrap());
-                self.cpu = Cpu::new(&rom, Rc::clone(&framebuffer));
-                self.display =
-                    widgets::Display::new(DISPLAY_HEIGHT.into(), DISPLAY_WIDTH.into(), framebuffer);
+                self.cpu = Some(Cpu::new(&rom, Rc::clone(&self.framebuffer)));
                 self.running = true;
             }
             Message::PauseRequested => self.pause(),
@@ -184,14 +184,14 @@ impl Default for Application {
         let framebuffer = Rc::new(RefCell::new(
             [[false; DISPLAY_WIDTH as usize]; DISPLAY_HEIGHT as usize],
         ));
-        let rom = RomBuffer::default();
         Self {
-            cpu: Cpu::new(&rom, Rc::clone(&framebuffer)),
+            cpu: None,
             display: widgets::Display::new(
                 DISPLAY_HEIGHT.into(),
                 DISPLAY_WIDTH.into(),
-                framebuffer,
+                Rc::clone(&framebuffer),
             ),
+            framebuffer,
             running: false,
         }
     }
