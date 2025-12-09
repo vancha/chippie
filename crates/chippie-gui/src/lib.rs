@@ -23,7 +23,7 @@ mod widgets;
 pub enum Message {
     /// A message that is used as a clock source's signal
     Tick,
-    KeyboardEvent(iced::keyboard::Event),
+    KeyboardEvent(keyboard::Event),
     FileSelectButtonClicked,
     FileSelected(Option<FileHandle>),
     PauseRequested,
@@ -111,14 +111,14 @@ impl Application {
                 }
             }
             Message::KeyboardEvent(event) => match event {
-                iced::keyboard::Event::KeyPressed { key, .. } => {
+                keyboard::Event::KeyPressed { key, .. } => {
                     if self.running
                         && let Some(i) = Self::to_index(key)
                     {
                         self.cpu.set_key_state(i, true)
                     }
                 }
-                iced::keyboard::Event::KeyReleased { key, .. } => {
+                keyboard::Event::KeyReleased { key, .. } => {
                     if self.running
                         && let Some(i) = Self::to_index(key)
                     {
@@ -126,7 +126,7 @@ impl Application {
                     }
                 }
                 _ => {}
-            }
+            },
             Message::FileSelectButtonClicked => {
                 // Pause the execution
                 self.pause();
