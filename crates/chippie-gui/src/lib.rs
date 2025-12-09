@@ -27,12 +27,15 @@ pub enum Message {
     KeyReleased(keyboard::Key),
     FileSelectButtonClicked,
     FileSelected(Option<FileHandle>),
+    PauseRequested,
+    ResumeRequested,
 }
 
 /// The main application struct, which constructs GUI and reacts on messages
 pub struct Application {
     cpu: Cpu,
     display: widgets::Display,
+    initialized: bool,
     running: bool,
 }
 
@@ -55,15 +58,40 @@ impl Application {
     /// Creates a full view of the main window
     pub fn view(&self) -> Element<'_, Message> {
         // Create a menu bar, used to control the state of the emulator
-        let bar = MenuBar::new(vec![Item::with_menu(
-            button("File"),
-            Menu::new(vec![Item::new(
-                button("Select Rom")
-                    .on_press(Message::FileSelectButtonClicked)
-                    .width(Fill),
-            )])
-            .width(180.0),
-        )]);
+        let bar = MenuBar::new(vec![
+            Item::with_menu(
+                button("File"),
+                Menu::new(vec![Item::new(
+                    button("Select Rom")
+                        .on_press(Message::FileSelectButtonClicked)
+                        .width(Fill),
+                )])
+                .width(180.0),
+            ),
+            Item::with_menu(
+                button("Emulation"),
+                Menu::new(vec![
+                    Item::new(
+                        button("Resume")
+                            .on_press_maybe(if self.initialized && !self.running {
+                                Some(Message::ResumeRequested)
+                            } else {
+                                None
+                            })
+                            .width(Fill),
+                    ),
+                    Item::new(
+                        button("Pause")
+                            .on_press_maybe(if self.running {
+                                Some(Message::PauseRequested)
+                            } else {
+                                None
+                            })
+                            .width(Fill),
+                    ),
+                ]),
+            ),
+        ]);
 
         column![bar, self.display.view()]
             .width(Fill)
@@ -83,16 +111,23 @@ impl Application {
                 }
             }
             Message::KeyPressed(key) => {
-                if let Some(i) = Self::to_index(key) {
+                if self.running
+                    && let Some(i) = Self::to_index(key)
+                {
                     self.cpu.set_key_state(i, true)
                 }
             }
             Message::KeyReleased(key) => {
-                if let Some(i) = Self::to_index(key) {
+                if self.running
+                    && let Some(i) = Self::to_index(key)
+                {
                     self.cpu.set_key_state(i, false)
                 }
             }
             Message::FileSelectButtonClicked => {
+                // Pause the execution
+                self.pause();
+
                 return Task::perform(
                     AsyncFileDialog::new()
                         .add_filter("Chip8 ROM files".to_string(), &["ch8", "8o"])
@@ -101,17 +136,18 @@ impl Application {
                 );
             }
             Message::FileSelected(Some(file)) => {
-                let framebuffer = Rc::new(RefCell::new(
-                    [[false; DISPLAY_WIDTH as usize]; DISPLAY_HEIGHT as usize],
-                ));
                 let rom = RomBuffer::new(file.path().to_str().unwrap());
-                self.cpu = Cpu::new(&rom, Rc::clone(&framebuffer));
-                self.display =
-                    widgets::Display::new(DISPLAY_HEIGHT.into(), DISPLAY_WIDTH.into(), framebuffer);
+                self.cpu.load(&rom);
+                self.cpu.reset();
 
-                self.running = true;
+                self.initialized = true;
+                self.resume();
             }
-            _ => {}
+            Message::FileSelected(None) => {
+                self.resume();
+            }
+            Message::PauseRequested => self.pause(),
+            Message::ResumeRequested => self.resume(),
         }
 
         Task::none()
@@ -124,6 +160,18 @@ impl Application {
             keyboard::on_key_release(|key, _| Some(Message::KeyReleased(key))),
             time::every(constants::TICK_INTERVAL).map(|_| Message::Tick),
         ])
+    }
+
+    /// This function pauses the execution of the program
+    fn pause(&mut self) {
+        self.running = false;
+    }
+
+    /// This function resumes the execution of the program
+    fn resume(&mut self) {
+        if self.initialized {
+            self.running = true;
+        }
     }
 
     /// The function is used to convert iced::keyboard::Key values to key indexes, used inside the
@@ -147,14 +195,15 @@ impl Default for Application {
         let framebuffer = Rc::new(RefCell::new(
             [[false; DISPLAY_WIDTH as usize]; DISPLAY_HEIGHT as usize],
         ));
-        let rom = RomBuffer::default();
+
         Self {
-            cpu: Cpu::new(&rom, Rc::clone(&framebuffer)),
+            cpu: Cpu::new(Rc::clone(&framebuffer)),
             display: widgets::Display::new(
                 DISPLAY_HEIGHT.into(),
                 DISPLAY_WIDTH.into(),
                 framebuffer,
             ),
+            initialized: false,
             running: false,
         }
     }
