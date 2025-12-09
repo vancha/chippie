@@ -49,8 +49,9 @@ impl Application {
     /// let _ = Application::run();
     /// ```
     pub fn run() -> iced::Result {
-        iced::application(constants::APP_NAME, Application::update, Application::view)
+        iced::application(Application::default, Application::update, Application::view)
             .subscription(Application::subscription)
+            .title(constants::APP_NAME)
             .run()
     }
 
