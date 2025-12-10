@@ -18,3 +18,10 @@ default-members = [
     "crates/*",
 ]
 
+[profile.dev]
+opt-level = "s"
+
+[profile.release]
+opt-level = 3
+strip = "symbols"
+incremental = true
