@@ -23,8 +23,7 @@ mod widgets;
 pub enum Message {
     /// A message that is used as a clock source's signal
     Tick,
-    KeyPressed(keyboard::Key),
-    KeyReleased(keyboard::Key),
+    KeyboardEvent(keyboard::Event),
     FileSelectButtonClicked,
     FileSelected(Option<FileHandle>),
     PauseRequested,
@@ -50,8 +49,9 @@ impl Application {
     /// let _ = Application::run();
     /// ```
     pub fn run() -> iced::Result {
-        iced::application(constants::APP_NAME, Application::update, Application::view)
+        iced::application(Application::default, Application::update, Application::view)
             .subscription(Application::subscription)
+            .title(constants::APP_NAME)
             .run()
     }
 
@@ -110,20 +110,23 @@ impl Application {
                     self.cpu.decrement_timers();
                 }
             }
-            Message::KeyPressed(key) => {
-                if self.running
-                    && let Some(i) = Self::to_index(key)
-                {
-                    self.cpu.set_key_state(i, true)
+            Message::KeyboardEvent(event) => match event {
+                keyboard::Event::KeyPressed { key, .. } => {
+                    if self.running
+                        && let Some(i) = Self::to_index(key)
+                    {
+                        self.cpu.set_key_state(i, true)
+                    }
                 }
-            }
-            Message::KeyReleased(key) => {
-                if self.running
-                    && let Some(i) = Self::to_index(key)
-                {
-                    self.cpu.set_key_state(i, false)
+                keyboard::Event::KeyReleased { key, .. } => {
+                    if self.running
+                        && let Some(i) = Self::to_index(key)
+                    {
+                        self.cpu.set_key_state(i, false)
+                    }
                 }
-            }
+                _ => {}
+            },
             Message::FileSelectButtonClicked => {
                 // Pause the execution
                 self.pause();
@@ -156,8 +159,7 @@ impl Application {
     /// Creates a specific task, that is run asynchronously by iced
     pub fn subscription(&self) -> Subscription<Message> {
         Subscription::batch(vec![
-            keyboard::on_key_press(|key, _| Some(Message::KeyPressed(key))),
-            keyboard::on_key_release(|key, _| Some(Message::KeyReleased(key))),
+            keyboard::listen().map(Message::KeyboardEvent),
             time::every(constants::TICK_INTERVAL).map(|_| Message::Tick),
         ])
     }
