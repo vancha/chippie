@@ -4,10 +4,13 @@ version = "0.1.0"
 authors = ["vancha"]
 edition = "2024"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 chippie-gui = { path = "./crates/chippie-gui", version = "0.1.0" }
+
+[features]
+x11 = ["chippie-gui/x11"]
+wayland = ["chippie-gui/wayland"]
+default = ["wayland"]
 
 [workspace]
 members = [
