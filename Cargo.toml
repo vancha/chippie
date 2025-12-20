@@ -1,5 +1,5 @@
 [package]
-name = "chip8_emulator"
+name = "chippie"
 version = "0.1.0"
 authors = ["vancha"]
 edition = "2024"
