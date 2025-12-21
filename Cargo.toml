@@ -1,19 +1,19 @@
 [package]
-name = "chip8_emulator"
+name = "chippie"
 version = "0.1.0"
 authors = ["vancha"]
 edition = "2024"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-chippie-gui = { path = "./crates/chippie-gui", version = "0.1.0" }
+chippie-gui = { path = "./crates/chippie-gui", version = "0.1.0", optional = true }
+
+[features]
+x11 = ["dep:chippie-gui", "chippie-gui/x11"]
+wayland = ["dep:chippie-gui", "chippie-gui/wayland"]
+default = ["wayland"]
 
 [workspace]
 members = [
-    "crates/*",
-]
-default-members = [
     ".",
     "crates/*",
 ]
