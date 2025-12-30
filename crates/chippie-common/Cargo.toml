@@ -1,0 +1,10 @@
+[package]
+name = "chippie-common"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serde = "1.0.228"
+toml = { version = "0.9.10", features = [ "parse", "serde", "std" ] }
+
+chippie-emulator = { path = "../chippie-emulator" }

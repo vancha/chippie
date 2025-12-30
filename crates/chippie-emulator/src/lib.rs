@@ -22,3 +22,4 @@ pub use rombuffer::RomBuffer;
 
 pub type Framebuffer =
     [[bool; constants::DISPLAY_WIDTH as usize]; constants::DISPLAY_HEIGHT as usize];
+pub type Keyboard = [bool; NUM_KEYS as usize];

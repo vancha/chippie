@@ -2,6 +2,9 @@
 //!
 //! A GUI wrapper for the chippie-emulator crate
 
+mod constants;
+mod widgets;
+
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -12,11 +15,10 @@ use iced::{Element, Fill, Subscription, Task};
 use iced_aw::menu::{Item, Menu, MenuBar};
 use rfd::{AsyncFileDialog, FileHandle};
 
-use chippie_emulator::{Cpu, DISPLAY_HEIGHT, DISPLAY_WIDTH, NUM_KEYS, RomBuffer};
+use chippie_common::Settings;
+use chippie_emulator::{Cpu, DISPLAY_HEIGHT, DISPLAY_WIDTH, RomBuffer};
 
-mod constants;
 use constants::CYCLES_PER_FRAME;
-mod widgets;
 
 /// Messages that are used for communication between iced widgets.
 #[derive(Debug, Clone)]
@@ -36,6 +38,7 @@ pub struct Application {
     display: widgets::Display,
     initialized: bool,
     running: bool,
+    settings: Settings,
 }
 
 impl Application {
@@ -110,23 +113,35 @@ impl Application {
                     self.cpu.decrement_timers();
                 }
             }
-            Message::KeyboardEvent(event) => match event {
-                keyboard::Event::KeyPressed { key, .. } => {
-                    if self.running
-                        && let Some(i) = Self::to_index(key)
-                    {
-                        self.cpu.set_key_state(i, true)
-                    }
+            Message::KeyboardEvent(event) => {
+                if !self.running {
+                    return Task::none();
                 }
-                keyboard::Event::KeyReleased { key, .. } => {
-                    if self.running
-                        && let Some(i) = Self::to_index(key)
-                    {
-                        self.cpu.set_key_state(i, false)
+
+                let translator = |key: keyboard::Key| -> Option<usize> {
+                    let mut keybindings = self.settings.keybindings.into_iter();
+                    if let keyboard::Key::Character(data) = key {
+                        let character = data.chars().next().unwrap();
+                        return keybindings.position(|x| x == character);
                     }
+
+                    None
+                };
+
+                match event {
+                    keyboard::Event::KeyPressed { key, .. } => {
+                        if let Some(i) = translator(key) {
+                            self.cpu.set_key_state(i as u8, true)
+                        } 
+                    }
+                    keyboard::Event::KeyReleased { key, .. } => {
+                        if let Some(i) = translator(key) {
+                            self.cpu.set_key_state(i as u8, false)
+                        } 
+                    }
+                    _ => {}
                 }
-                _ => {}
-            },
+            }
             Message::FileSelectButtonClicked => {
                 // Pause the execution
                 self.pause();
@@ -175,21 +190,6 @@ impl Application {
             self.running = true;
         }
     }
-
-    /// The function is used to convert iced::keyboard::Key values to key indexes, used inside the
-    /// emulator
-    fn to_index(key: keyboard::Key) -> Option<u8> {
-        match key {
-            keyboard::Key::Character(ch) => {
-                if let Ok(index) = u8::from_str_radix(ch.as_str(), 16) {
-                    if index < NUM_KEYS { Some(index) } else { None }
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        }
-    }
 }
 
 impl Default for Application {
@@ -207,6 +207,7 @@ impl Default for Application {
             ),
             initialized: false,
             running: false,
+            settings: Settings::default(),
         }
     }
 }
