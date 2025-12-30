@@ -18,8 +18,6 @@ use rfd::{AsyncFileDialog, FileHandle};
 use chippie_common::Settings;
 use chippie_emulator::{Cpu, DISPLAY_HEIGHT, DISPLAY_WIDTH, RomBuffer};
 
-use constants::CYCLES_PER_FRAME;
-
 /// Messages that are used for communication between iced widgets.
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -107,7 +105,7 @@ impl Application {
         match message {
             Message::Tick => {
                 if self.running {
-                    for _ in 0..CYCLES_PER_FRAME {
+                    for _ in 0..self.settings.frame_cycles {
                         self.cpu.cycle();
                     }
                     self.cpu.decrement_timers();
