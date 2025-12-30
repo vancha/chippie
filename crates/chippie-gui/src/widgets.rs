@@ -1,9 +1,9 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use iced::mouse::Cursor;
-use iced::widget::canvas;
-use iced::{Color, Element, Fill, Point, Rectangle, Renderer, Size, Theme};
+use iced::{
+    Color, Element, Fill, Point, Rectangle, Renderer, Size, Theme, mouse::Cursor, widget::canvas,
+};
 
 use chippie_emulator::Framebuffer;
 

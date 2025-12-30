@@ -8,10 +8,10 @@ mod widgets;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use iced::keyboard;
-use iced::time;
-use iced::widget::{button, column};
-use iced::{Element, Fill, Subscription, Task};
+use iced::{
+    Element, Fill, Subscription, Task, keyboard, time,
+    widget::{button, column},
+};
 use iced_aw::menu::{Item, Menu, MenuBar};
 use rfd::{AsyncFileDialog, FileHandle};
 
@@ -132,12 +132,12 @@ impl Application {
                     keyboard::Event::KeyPressed { key, .. } => {
                         if let Some(i) = translator(key) {
                             self.cpu.set_key_state(i as u8, true)
-                        } 
+                        }
                     }
                     keyboard::Event::KeyReleased { key, .. } => {
                         if let Some(i) = translator(key) {
                             self.cpu.set_key_state(i as u8, false)
-                        } 
+                        }
                     }
                     _ => {}
                 }
