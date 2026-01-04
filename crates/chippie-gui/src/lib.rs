@@ -16,7 +16,7 @@ use iced_aw::menu::{Item, Menu, MenuBar};
 use rfd::{AsyncFileDialog, FileHandle};
 
 use chippie_common::Settings;
-use chippie_emulator::{Cpu, Framebuffer, RomBuffer, ScreenResolution};
+use chippie_emulator::{Cpu, Framebuffer, RomBuffer};
 
 /// Messages that are used for communication between iced widgets.
 #[derive(Debug, Clone)]
@@ -192,15 +192,15 @@ impl Application {
 
 impl Default for Application {
     fn default() -> Self {
-        let resolution = ScreenResolution::default();
-        let framebuffer = Rc::new(RefCell::new(Framebuffer::new(resolution)));
+        let settings = Settings::default();
+        let framebuffer = Rc::new(RefCell::new(Framebuffer::new(settings.resolution)));
 
         Self {
             cpu: Cpu::new(Rc::clone(&framebuffer)),
             display: widgets::Display::new(framebuffer),
             initialized: false,
             running: false,
-            settings: Settings::default(),
+            settings,
         }
     }
 }

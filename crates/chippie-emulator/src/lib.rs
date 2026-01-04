@@ -1,5 +1,7 @@
 #![allow(unused_variables, dead_code)]
 
+use std::{fmt, str::FromStr};
+
 ///This holds all of the constants (written in capital letters in the code)
 mod constants;
 ///Handles the fetch, decode execute cycle
@@ -35,10 +37,10 @@ pub enum ScreenResolution {
 impl ScreenResolution {
     pub fn size(&self) -> (u16, u16) {
         match self {
-            ScreenResolution::Basic => (64, 32),
-            ScreenResolution::ETI => (64, 64),
-            ScreenResolution::SuperChip => (128, 64),
-            ScreenResolution::MegaChip => (256, 192),
+            Self::Basic => (64, 32),
+            Self::ETI => (64, 64),
+            Self::SuperChip => (128, 64),
+            Self::MegaChip => (256, 192),
         }
     }
 
@@ -48,6 +50,26 @@ impl ScreenResolution {
 
     pub fn height(&self) -> u16 {
         self.size().1
+    }
+}
+
+impl fmt::Display for ScreenResolution {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}x{}", self.width(), self.height())
+    }
+}
+
+impl FromStr for ScreenResolution {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "64x32" => Ok(Self::Basic),
+            "64x64" => Ok(Self::ETI),
+            "128x64" => Ok(Self::SuperChip),
+            "256x192" => Ok(Self::MegaChip),
+            _ => Err(()),
+        }
     }
 }
 
