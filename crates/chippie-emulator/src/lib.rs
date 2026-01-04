@@ -15,8 +15,6 @@ pub use constants::NUM_KEYS;
 pub use cpu::Cpu;
 pub use rombuffer::RomBuffer;
 
-pub type Keyboard = [bool; NUM_KEYS as usize];
-
 /// A custom type which describes possible screen resolutions for the emulator.
 #[derive(Clone, Copy, Default)]
 pub enum ScreenResolution {

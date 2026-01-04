@@ -1,7 +1,3 @@
-/// The width of the display in pixels
-pub const DISPLAY_WIDTH: u8 = 64;
-/// The height of the display in pixels
-pub const DISPLAY_HEIGHT: u8 = 32;
 /// The size of ram in bytes
 pub const RAM_SIZE: u16 = 4096;
 /// For the regular chip 8 roms
