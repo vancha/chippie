@@ -7,6 +7,8 @@ use serde::{
 
 use chippie_emulator::ScreenResolution;
 
+/// A special visitor, required by serde's Deserializer. It is needed to access deserializer's
+/// internals in a safe way.
 struct ResolutionVisitor;
 
 impl<'de> Visitor<'de> for ResolutionVisitor {
@@ -31,6 +33,7 @@ impl<'de> Visitor<'de> for ResolutionVisitor {
     }
 }
 
+/// Serialize an instance of the ScreenResolution enum using 'serde' by converting it to a string
 pub fn serialize_resolution<S>(
     resolution: &ScreenResolution,
     serializer: S,
@@ -41,6 +44,7 @@ where
     serializer.serialize_str(&resolution.to_string())
 }
 
+/// Derialize an instance of the ScreenResolution enum from string using 'serde'
 pub fn deserialize_resolution<'a, D>(deserializer: D) -> Result<ScreenResolution, D::Error>
 where
     D: Deserializer<'a>,

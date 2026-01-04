@@ -2,19 +2,12 @@
 
 use std::{fmt, str::FromStr};
 
-///This holds all of the constants (written in capital letters in the code)
 mod constants;
-///Handles the fetch, decode execute cycle
 mod cpu;
-///An overview of all instructions in the chip 8 instruction set architecture
 mod instruction;
-///A data structure modeling ram
 mod ram;
-///The registers for the chip8 cpu
 mod registers;
-///Holds the data loaded from disk
 mod rombuffer;
-///The stack that is used in the cpu
 mod stack;
 
 // Re-export structs and modules that migth be used by graphics libraries
@@ -24,7 +17,7 @@ pub use rombuffer::RomBuffer;
 
 pub type Keyboard = [bool; NUM_KEYS as usize];
 
-// A custom type which describes possible screen resolutions for the emulator
+/// A custom type which describes possible screen resolutions for the emulator.
 #[derive(Clone, Copy, Default)]
 pub enum ScreenResolution {
     #[default]
@@ -35,6 +28,7 @@ pub enum ScreenResolution {
 }
 
 impl ScreenResolution {
+    /// Get the display dimensions out of the resolution instance
     pub fn size(&self) -> (u16, u16) {
         match self {
             Self::Basic => (64, 32),
@@ -44,10 +38,12 @@ impl ScreenResolution {
         }
     }
 
+    /// Get display width
     pub fn width(&self) -> u16 {
         self.size().0
     }
 
+    /// Get display height
     pub fn height(&self) -> u16 {
         self.size().1
     }
@@ -73,13 +69,19 @@ impl FromStr for ScreenResolution {
     }
 }
 
-// The struct that stores information about pixels
+/// The struct that stores information about pixels, which is then used to draw the image on the
+/// screen.
+///
+/// This struct is meant to be shared between the emulator instance and the instance of
+/// graphical framework's wrapper, so that the emulator can read and write to this buffer, whereas
+/// the graphical framework has only read-only access to it.
 pub struct Framebuffer {
     resolution: ScreenResolution,
     data: Vec<bool>,
 }
 
 impl Framebuffer {
+    /// Create a new framebuffer with the given resolution
     pub fn new(resolution: ScreenResolution) -> Self {
         let size = (resolution.width() * resolution.height()) as usize;
 
@@ -89,15 +91,18 @@ impl Framebuffer {
         }
     }
 
+    /// Get the framebuffer's resolution
     pub fn resolution(&self) -> ScreenResolution {
         self.resolution
     }
 
+    /// Clear the framebuffer
     pub fn clear(&mut self) {
         let size = (self.resolution.width() * self.resolution.height()) as usize;
         self.data = vec![false; size];
     }
 
+    /// Get the value of the pixel with the given X and Y positions
     pub fn get(&self, x: u16, y: u16) -> bool {
         let index = (x * self.resolution.width() + y) as usize;
         assert!(index < self.data.len());
@@ -105,6 +110,7 @@ impl Framebuffer {
         self.data[index]
     }
 
+    /// Change the value of the pixel, which has the given coordinates
     pub fn set(&mut self, x: u16, y: u16, value: bool) {
         let index = (x * self.resolution.width() + y) as usize;
         assert!(index < self.data.len());
