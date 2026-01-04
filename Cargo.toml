@@ -5,7 +5,10 @@ authors = ["vancha"]
 edition = "2024"
 
 [dependencies]
+toml = { version = "0.9.10", features = [ "parse", "serde", "std" ] }
+
 chippie-gui = { path = "./crates/chippie-gui", version = "0.1.0", optional = true }
+chippie-common = { path = "./crates/chippie-common", version = "0.1.0" }
 
 [features]
 x11 = ["dep:chippie-gui", "chippie-gui/x11"]

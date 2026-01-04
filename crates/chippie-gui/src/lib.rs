@@ -5,8 +5,7 @@
 mod constants;
 mod widgets;
 
-use std::cell::RefCell;
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
 
 use iced::{
     Element, Fill, Subscription, Task, keyboard, time,
@@ -36,24 +35,42 @@ pub struct Application {
     display: widgets::Display,
     initialized: bool,
     running: bool,
-    settings: Settings,
+    settings: Rc<RefCell<Settings>>,
 }
 
 impl Application {
+    fn new(settings: Rc<RefCell<Settings>>) -> Self {
+        let framebuffer = Rc::new(RefCell::new(Framebuffer::new(settings.borrow().resolution)));
+
+        Self {
+            cpu: Cpu::new(Rc::clone(&framebuffer)),
+            display: widgets::Display::new(framebuffer),
+            initialized: false,
+            running: false,
+            settings,
+        }
+    }
+
     /// Starts the emulator and creates a window with which a user can interact
     ///
     /// # Examples
     ///
     /// ```ignore
     /// use chippie_gui::Application;
+    /// use chippie_common::Settings;
     ///
-    /// let _ = Application::run();
+    /// let settings = Settings::default();
+    /// let _ = Application::run(settings);
     /// ```
-    pub fn run() -> iced::Result {
-        iced::application(Application::default, Application::update, Application::view)
-            .subscription(Application::subscription)
-            .title(constants::APP_NAME)
-            .run()
+    pub fn run(settings: Rc<RefCell<Settings>>) -> iced::Result {
+        iced::application(
+            move || Application::new(settings.clone()),
+            Application::update,
+            Application::view,
+        )
+        .subscription(Application::subscription)
+        .title(constants::APP_NAME)
+        .run()
     }
 
     /// Creates a full view of the main window
@@ -105,7 +122,8 @@ impl Application {
         match message {
             Message::Tick => {
                 if self.running {
-                    for _ in 0..self.settings.frame_cycles {
+                    let settings = self.settings.borrow();
+                    for _ in 0..settings.frame_cycles {
                         self.cpu.cycle();
                     }
                     self.cpu.decrement_timers();
@@ -117,7 +135,8 @@ impl Application {
                 }
 
                 let translator = |key: keyboard::Key| -> Option<usize> {
-                    let mut keybindings = self.settings.keybindings.into_iter();
+                    let settings = self.settings.borrow();
+                    let mut keybindings = settings.keybindings.into_iter();
                     if let keyboard::Key::Character(data) = key {
                         let character = data.chars().next().unwrap();
                         return keybindings.position(|x| x == character);
@@ -186,21 +205,6 @@ impl Application {
     fn resume(&mut self) {
         if self.initialized {
             self.running = true;
-        }
-    }
-}
-
-impl Default for Application {
-    fn default() -> Self {
-        let settings = Settings::default();
-        let framebuffer = Rc::new(RefCell::new(Framebuffer::new(settings.resolution)));
-
-        Self {
-            cpu: Cpu::new(Rc::clone(&framebuffer)),
-            display: widgets::Display::new(framebuffer),
-            initialized: false,
-            running: false,
-            settings,
         }
     }
 }
