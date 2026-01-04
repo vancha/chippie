@@ -4,13 +4,15 @@ use std::rc::Rc;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 
-use crate::Framebuffer;
-use crate::constants::{DISPLAY_HEIGHT, DISPLAY_WIDTH, NUM_KEYS, RAM_SIZE, ROM_START_ADDRESS};
-use crate::instruction::Instruction;
-use crate::ram::Ram;
-use crate::registers::Registers;
-use crate::rombuffer::RomBuffer;
-use crate::stack::Stack;
+use crate::{
+    Framebuffer,
+    constants::{NUM_KEYS, RAM_SIZE, ROM_START_ADDRESS},
+    instruction::Instruction,
+    ram::Ram,
+    registers::Registers,
+    rombuffer::RomBuffer,
+    stack::Stack,
+};
 
 #[derive(Default)]
 struct Quirks {
@@ -59,10 +61,7 @@ impl Cpu {
             }
             //00E0
             Instruction::ClearScreen => {
-                self.framebuffer
-                    .borrow_mut()
-                    .iter_mut()
-                    .for_each(|x| *x = [false; DISPLAY_WIDTH as usize]);
+                self.framebuffer.borrow_mut().clear();
             }
             //00EE
             Instruction::ReturnFromSubroutine => {
@@ -211,19 +210,20 @@ impl Cpu {
             //DXYN
             Instruction::Display { x, y, n } => {
                 //drawing at (start_x, start_y) on the framebuffer, wraps around if out of bounds
-                let start_x = (self.registers.get_register(x) % DISPLAY_WIDTH) as usize;
-                let start_y = (self.registers.get_register(y) % DISPLAY_HEIGHT) as usize;
+                let resolution = self.framebuffer.borrow().resolution();
+                let start_x = self.registers.get_register(x) as u16 % resolution.width();
+                let start_y = self.registers.get_register(y) as u16 % resolution.height();
 
-                let sprite_start = self.registers.get_index_register() as usize;
+                let sprite_start = self.registers.get_index_register() as u16;
                 self.registers.set_register(0xF, 0);
 
                 //move over all rows of the sprite (it has n rows)
-                for sprite_row in 0..n as usize {
-                    if sprite_start + sprite_row >= RAM_SIZE as usize {
+                for sprite_row in 0..n as u16 {
+                    if sprite_start + sprite_row >= RAM_SIZE {
                         return;
                     }
                     //bytes[sprite_start + sprite_row];
-                    let sprite = self.memory.bytes[sprite_start + sprite_row];
+                    let sprite = self.memory.bytes[(sprite_start + sprite_row) as usize];
                     //what is the sprite?
                     for sprite_column in 0..8 {
                         let pixel_row = start_x + sprite_column;
@@ -232,14 +232,13 @@ impl Cpu {
                         let sprite_pixel_set = sprite >> (7 - sprite_column) & 1 == 1;
 
                         //check so as to *not* draw out of bounds of the framebuffer
-                        if pixel_row < u16::from(DISPLAY_WIDTH).into()
-                            && u16::try_from(pixel_column).unwrap() < u16::from(DISPLAY_HEIGHT)
-                        {
+                        if pixel_row < resolution.width() && pixel_column < resolution.height() {
                             let mut framebuffer = self.framebuffer.borrow_mut();
-                            if framebuffer[pixel_column][pixel_row] && sprite_pixel_set {
+                            let value = framebuffer.get(pixel_column, pixel_row);
+                            if value && sprite_pixel_set {
                                 self.registers.set_register(0xf, 1);
                             }
-                            framebuffer[pixel_column][pixel_row] ^= sprite_pixel_set;
+                            framebuffer.set(pixel_column, pixel_row, value ^ sprite_pixel_set);
                         }
                     }
                 }
@@ -368,7 +367,7 @@ impl Cpu {
     /// Resets the state of the CPU
     pub fn reset(&mut self) {
         // Clean the framebuffer
-        *self.framebuffer.borrow_mut() = [[false; DISPLAY_WIDTH as usize]; DISPLAY_HEIGHT as usize];
+        self.framebuffer.borrow_mut().clear();
 
         self.program_counter = ROM_START_ADDRESS;
         self.registers = Registers::default();
@@ -389,12 +388,10 @@ impl Cpu {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::constants::NUM_REGISTERS;
+    use crate::{ScreenResolution, constants::NUM_REGISTERS};
 
     fn create_framebuffer() -> Rc<RefCell<Framebuffer>> {
-        Rc::new(RefCell::new(
-            [[false; DISPLAY_WIDTH as usize]; DISPLAY_HEIGHT as usize],
-        ))
+        Rc::new(RefCell::new(Framebuffer::new(ScreenResolution::default())))
     }
 
     #[test]
@@ -418,9 +415,9 @@ mod tests {
         // Clears the framebuffer
         let mut cpu = Cpu::new(create_framebuffer());
         cpu.load(&RomBuffer::from_bytes(vec![0x00, 0xE0]));
-        cpu.framebuffer.borrow_mut()[0][0] = true;
+        cpu.framebuffer.borrow_mut().set(0, 0, true);
         cpu.cycle();
-        assert!(!cpu.framebuffer.borrow()[0][0]);
+        assert!(!cpu.framebuffer.borrow().get(0, 0));
     }
 
     #[test]
@@ -728,11 +725,13 @@ mod tests {
 
         //Given all this, chip8 should put 8 ones at (2,2) on the display
         cpu.cycle();
-        let byte_of_ones = cpu.framebuffer.borrow_mut()[2];
         let mut what_it_should_look_like = [false; 64];
         what_it_should_look_like[..10]
             .copy_from_slice(&[false, false, true, true, true, true, true, true, true, true]); //this is what the second column should look like
-        assert_eq!(byte_of_ones, what_it_should_look_like);
+        let framebuffer = cpu.framebuffer.borrow();
+        for i in 0..what_it_should_look_like.len() {
+            assert_eq!(framebuffer.get(2, i as u16), what_it_should_look_like[i]);
+        }
     }
 
     #[test]

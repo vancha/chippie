@@ -12,19 +12,18 @@ use crate::Message;
 /// A custom widget based on Canvas, which draws *pixels* over a black screen in the natice CHIP-8
 /// resolution.
 pub struct Display {
-    rows: usize,
-    columns: usize,
+    rows: u16,
+    columns: u16,
     framebuffer: Rc<RefCell<Framebuffer>>,
 }
 
 impl Display {
-    pub fn new(rows: usize, columns: usize, framebuffer: Rc<RefCell<Framebuffer>>) -> Self {
-        assert!(rows == framebuffer.borrow_mut().len());
-        // TODO: add checks for column sizes
+    pub fn new(framebuffer: Rc<RefCell<Framebuffer>>) -> Self {
+        let resolution = framebuffer.borrow().resolution();
 
         Self {
-            rows,
-            columns,
+            rows: resolution.height(),
+            columns: resolution.width(),
             framebuffer,
         }
     }
@@ -60,7 +59,7 @@ impl canvas::Program<Message> for Display {
         let framebuffer = self.framebuffer.borrow();
         for column in 0..self.columns {
             for row in 0..self.rows {
-                if !framebuffer[row][column] {
+                if !framebuffer.get(row, column) {
                     continue;
                 }
 
